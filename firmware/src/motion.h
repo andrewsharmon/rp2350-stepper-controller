@@ -6,6 +6,11 @@
 // low 32 bits are exactly the microstep electrical phase (one electrical
 // cycle = 4 full steps = 2^32). Speeds are in full steps/s.
 //
+// A generator (trapezoid, or a fixed-time cosine / quintic segment) produces
+// the raw motion; the s-curve profiles then pass it through one or two
+// moving-average filters, which limit jerk without raising peak speed or
+// acceleration and without losing a single position unit.
+//
 // Pure logic (no SDK), so it runs in the host tests.
 
 #include <stdbool.h>
@@ -13,46 +18,91 @@
 
 #define MOTION_TICK_HZ        1000u
 #define MOTION_UNITS_PER_STEP (1ll << 30)
+#define MOTION_MAX_FILTER     100u   // ticks per moving-average stage (100 ms)
 
 typedef enum {
     MODE_IDLE,      // holding position, v = 0
-    MODE_POSITION,  // trapezoid to `target`, retargetable mid-move
+    MODE_POSITION,  // move to `target`, retargetable mid-move
     MODE_VELOCITY,  // ramp to `cmd_vel` and stay there
     MODE_JOG,       // like velocity, but decelerates to a stop if not
                     // refreshed within the jog timeout
 } motion_mode_t;
 
+typedef enum {
+    PROFILE_TRAP,     // trapezoid: fastest, step changes in acceleration
+    PROFILE_SCURVE,   // trapezoid + one moving average: jerk = amax / Tj per
+                      // acceleration change (twice that at a direct reversal)
+    PROFILE_SMOOTH,   // trapezoid + two moving averages: continuous jerk
+    PROFILE_COSINE,   // fixed-time cosine move (position mode only)
+    PROFILE_QUINTIC,  // fixed-time minimum-jerk quintic (position mode only)
+    PROFILE_COUNT,
+} motion_profile_t;
+
+// Moving average over the last `len` per-tick position deltas, with the
+// division remainder carried so the output total equals the input total.
 typedef struct {
-    // State
+    int64_t ring[MOTION_MAX_FILTER];
+    int64_t sum;
+    int64_t carry;
+    uint32_t head, len, nonzero;
+} motion_filter_t;
+
+typedef struct {
+    // Output: what the motor follows.
     int64_t pos;          // units
     float vel;            // full steps/s
     motion_mode_t mode;
-    bool settled;         // in IDLE with v == 0 (for hold current)
+    bool settled;         // generator idle and filters flushed (hold current)
+
+    // Raw generator state (before the filters).
+    int64_t gen_pos;
+    float gen_vel, gen_acc;
 
     // Command
     int64_t target;       // MODE_POSITION, units
     float cmd_vel;        // MODE_VELOCITY / MODE_JOG
     uint32_t jog_ticks_left;
 
-    // Limits
+    // Fixed-time segment (cosine / quintic): x relative to seg_p0, as a
+    // polynomial in normalized time tau = t / seg_T (cosine: c[0] = distance).
+    bool seg_active, seg_cosine;
+    int64_t seg_p0;
+    double seg_cd[6];     // exact, for the periodic re-sync
+    float seg_c[6];       // float copy for the per-tick evaluation
+    uint32_t seg_tick;    // ticks since the segment started
+    float seg_T;          // duration, s
+    int64_t seg_corr;     // per-tick drift correction (units)
+
+    // Settings
     float vmax;           // full steps/s
     float amax;           // full steps/s^2
+    motion_profile_t profile;
+    uint32_t jerk_ticks;  // moving-average length (s-curve / smooth)
+    motion_filter_t filt[2];
 } motion_axis_t;
 
 void motion_init(motion_axis_t *ax, float vmax, float amax);
 
 // Commands. Each takes effect at the next tick and blends from the current
-// position and velocity (no jumps).
+// state (no jumps).
 void motion_move_to(motion_axis_t *ax, int64_t target);
 void motion_set_velocity(motion_axis_t *ax, float vel);
 void motion_jog(motion_axis_t *ax, float vel, uint32_t timeout_ms);
 void motion_stop(motion_axis_t *ax);   // decelerate to rest, then IDLE
 
+// Change profile / jerk time (only while settled; returns false otherwise).
+bool motion_set_profile(motion_axis_t *ax, motion_profile_t profile, uint32_t jerk_ms);
+
 // Redefine the current position (only while settled; returns false otherwise).
 bool motion_set_position(motion_axis_t *ax, int64_t pos);
 
+// Stop dead where the output is (e-stop: outputs are already off).
+void motion_halt(motion_axis_t *ax);
+
 // Advance one tick. Updates pos and vel.
 void motion_tick(motion_axis_t *ax);
+
+const char *motion_profile_name(motion_profile_t p);
 
 static inline int64_t motion_steps_to_units(float steps) {
     return (int64_t)((double)steps * (double)MOTION_UNITS_PER_STEP);

@@ -28,6 +28,8 @@ static const char help_text[] =
     "  s [ax]                stop (decelerate); all axes if none given\n"
     "  z <ax> [pos]          set current position (default 0; axis must be at rest)\n"
     "  lim <ax> <vmax> [amax]  speed / acceleration limits\n"
+    "  prof <ax> <name> [ms] motion profile: trap, scurve, smooth, cosine, quintic;\n"
+    "                        ms = jerk time for scurve/smooth (default 30, max 100)\n"
     "  amp auto|<percent>    drive amplitude: automatic curve, or fixed\n"
     "  t <hz>                telemetry lines per second (0 = off, max 200)\n"
     "  stress on|off         every axis sweeps its own speed wave\n"
@@ -90,13 +92,19 @@ static void post(control_cmd_t *c) {
 static void print_axes(void) {
     control_snapshot_t s;
     control_snapshot(&s);
-    printf("  ax  mode  position        speed    amp  vmax   amax\n");
-    for (int i = 0; i < NUM_MOTORS; i++)
-        printf("  %2d  %-4s %12.3f %9.1f %5.2f%s %5.0f %6.0f\n", i + 1, mode_name(s.mode[i]),
+    printf("  ax  mode  position        speed    amp  vmax   amax  profile\n");
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        printf("  %2d  %-4s %12.3f %9.1f %5.2f%s %5.0f %6.0f  %s", i + 1, mode_name(s.mode[i]),
                steps(s.pos[i]), (double)s.vel[i], (double)s.amp[i],
-               (s.holding_mask >> i) & 1 ? "h" : " ", (double)s.vmax[i], (double)s.amax[i]);
+               (s.holding_mask >> i) & 1 ? "h" : " ", (double)s.vmax[i], (double)s.amax[i],
+               motion_profile_name((motion_profile_t)s.profile[i]));
+        if (s.profile[i] == PROFILE_SCURVE || s.profile[i] == PROFILE_SMOOTH)
+            printf(" %u ms", s.jerk_ms[i]);
+        putchar('\n');
+    }
     if (s.rejected)
-        printf("  %lu command(s) rejected (z needs the axis at rest)\n", (unsigned long)s.rejected);
+        printf("  %lu command(s) rejected (z and prof need the axis at rest)\n",
+               (unsigned long)s.rejected);
 }
 
 static void run_line(char *buf) {
@@ -151,6 +159,18 @@ static void run_line(char *buf) {
         if (!c.axes || !parse_float(argv[2], &c.f1) || (argc == 4 && !parse_float(argv[3], &c.f2)))
             goto usage;
         c.type = CMD_LIMITS;
+        post(&c);
+    } else if (strcmp(cmd, "prof") == 0 && (argc == 3 || argc == 4)) {
+        c.axes = (uint16_t)parse_axes(argv[1]);
+        int p = 0;
+        while (p < PROFILE_COUNT && strcmp(argv[2], motion_profile_name((motion_profile_t)p)) != 0)
+            p++;
+        f = 30.0f;
+        if (!c.axes || p == PROFILE_COUNT || (argc == 4 && !parse_float(argv[3], &f)))
+            goto usage;
+        c.type = CMD_PROFILE;
+        c.ms = (uint32_t)p;
+        c.f1 = f;
         post(&c);
     } else if (strcmp(cmd, "amp") == 0 && argc == 2) {
         if (strcmp(argv[1], "auto") == 0)

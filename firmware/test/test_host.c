@@ -14,6 +14,7 @@
 #include "microstep.h"
 #include "ladder.h"
 #include "motion.h"
+#include "trig.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
 #define SPAN (PERIOD_CLOCKS - 4 * HBRIDGE_SEGMENT_OVERHEAD)
@@ -184,46 +185,98 @@ static void test_ladder(void) {
 
 typedef struct {
     int ticks;
-    float max_v, max_a;    // magnitudes seen
-    float overshoot;       // steps past the target (in the direction of travel)
+    float max_v, max_a, max_j;  // magnitudes seen on the output
+    float overshoot;            // steps past the target (direction of travel)
 } run_stats_t;
 
-// Tick until IDLE (or max_ticks); track limits.
-static run_stats_t run_until_idle(motion_axis_t *ax, int max_ticks) {
+// Tick until settled (or max_ticks); track limits on the output.
+static run_stats_t run_until_settled(motion_axis_t *ax, int max_ticks) {
     run_stats_t st = {0};
-    float dir = 0.0f;
-    for (; st.ticks < max_ticks && ax->mode != MODE_IDLE; st.ticks++) {
+    float dir = 0.0f, a_prev = 0.0f;
+    int64_t target = ax->target;
+    for (; st.ticks < max_ticks && !(st.ticks > 0 && ax->settled); st.ticks++) {
         float v0 = ax->vel;
         motion_tick(ax);
-        float a = fabsf(ax->vel - v0) * MOTION_TICK_HZ;
-        if (ax->mode != MODE_IDLE && a > st.max_a) st.max_a = a;  // final snap excluded
-        if (fabsf(ax->vel) > st.max_v) st.max_v = fabsf(ax->vel);
-        if (ax->mode == MODE_POSITION) {
-            float d = motion_units_to_steps(ax->target - ax->pos);
-            if (dir == 0.0f && ax->vel != 0.0f) dir = ax->vel > 0 ? 1.0f : -1.0f;
-            if (dir * -d > st.overshoot) st.overshoot = dir * -d;
+        float a = (ax->vel - v0) * MOTION_TICK_HZ;
+        if (!ax->settled) {  // the final tick to rest is a snap, not a ramp
+            if (fabsf(a) > st.max_a) st.max_a = fabsf(a);
+            float j = fabsf(a - a_prev) * MOTION_TICK_HZ;
+            if (st.ticks > 0 && j > st.max_j) st.max_j = j;
         }
+        a_prev = a;
+        if (fabsf(ax->vel) > st.max_v) st.max_v = fabsf(ax->vel);
+        if (dir == 0.0f && ax->vel != 0.0f) dir = ax->vel > 0 ? 1.0f : -1.0f;
+        float d = motion_units_to_steps(target - ax->pos);
+        if (dir * -d > st.overshoot) st.overshoot = dir * -d;
     }
     return st;
 }
 
-static void check_move(float from, float to, float vmax, float amax) {
+static float ideal_time(motion_profile_t p, float d, float vmax, float amax, float tj) {
+    switch (p) {
+    case PROFILE_COSINE:
+        return fmaxf(1.5708f * d / vmax, sqrtf(4.9348f * d / amax));
+    case PROFILE_QUINTIC:
+        return fmaxf(1.875f * d / vmax, sqrtf(5.7735f * d / amax));
+    default: {
+        float t = d * amax <= vmax * vmax ? 2.0f * sqrtf(d / amax) : d / vmax + vmax / amax;
+        return t + (p == PROFILE_SCURVE ? tj : p == PROFILE_SMOOTH ? 2.0f * tj : 0.0f);
+    }
+    }
+}
+
+static void check_move_profile(motion_profile_t prof, float from, float to, float vmax, float amax) {
+    const uint32_t jerk_ms = 30;
     motion_axis_t ax;
     motion_init(&ax, vmax, amax);
+    motion_set_profile(&ax, prof, jerk_ms);
     motion_set_position(&ax, motion_steps_to_units(from));
     motion_move_to(&ax, motion_steps_to_units(to));
-    run_stats_t st = run_until_idle(&ax, 10000000);
+    run_stats_t st = run_until_settled(&ax, 10000000);
 
+    const char *n = motion_profile_name(prof);
     float d = fabsf(to - from);
-    // Ideal time: triangle if it never reaches vmax, else trapezoid.
-    float ideal = d * amax <= vmax * vmax ? 2.0f * sqrtf(d / amax) : d / vmax + vmax / amax;
+    float ideal = ideal_time(prof, d, vmax, amax, jerk_ms / 1000.0f);
     float t = (float)st.ticks / MOTION_TICK_HZ;
-    CHECK(ax.mode == MODE_IDLE && ax.pos == motion_steps_to_units(to),
-          "move %g->%g: ended at %f in mode %d", from, to, motion_units_to_steps(ax.pos), ax.mode);
-    CHECK(st.max_v <= vmax * 1.0001f, "move %g->%g: speed %f > vmax", from, to, st.max_v);
-    CHECK(st.max_a <= amax * 1.001f, "move %g->%g: accel %f > amax", from, to, st.max_a);
-    CHECK(st.overshoot <= 1e-3f, "move %g->%g: overshoot %f steps", from, to, st.overshoot);
-    CHECK(t <= ideal * 1.03f + 0.005f, "move %g->%g: %.3f s vs ideal %.3f s", from, to, t, ideal);
+    CHECK(ax.settled && ax.pos == motion_steps_to_units(to),
+          "%s %g->%g: ended at %f (settled %d)", n, from, to, motion_units_to_steps(ax.pos), ax.settled);
+    CHECK(st.max_v <= vmax * 1.002f, "%s %g->%g: speed %f > vmax", n, from, to, st.max_v);
+    CHECK(st.max_a <= amax * 1.01f, "%s %g->%g: accel %f > amax", n, from, to, st.max_a);
+    CHECK(st.overshoot <= 1e-3f, "%s %g->%g: overshoot %f steps", n, from, to, st.overshoot);
+    CHECK(t <= ideal * 1.03f + 0.005f, "%s %g->%g: %.3f s vs ideal %.3f s", n, from, to, t, ideal);
+    if (prof == PROFILE_SCURVE || prof == PROFILE_SMOOTH) {
+        // One moving average turns each acceleration step into a ramp of
+        // jerk amax/Tj; a direct +a to -a reversal (triangle moves) is a
+        // step of 2*amax.
+        float jmax = 2.0f * amax / (jerk_ms / 1000.0f);
+        CHECK(st.max_j <= jmax * 1.1f + 2.0f * MOTION_TICK_HZ, "%s %g->%g: jerk %.0f > %.0f",
+              n, from, to, st.max_j, jmax);
+    }
+}
+
+static void check_move(float from, float to, float vmax, float amax) {
+    for (int p = 0; p < PROFILE_COUNT; p++)
+        check_move_profile((motion_profile_t)p, from, to, vmax, amax);
+}
+
+static void test_trig(void) {
+    double worst = 0, worst_d = 0;
+    for (int k = -20000; k <= 20000; k++) {
+        float x = (float)k * 0.001f;  // +/- 20 rad, through every quadrant boundary
+        double e = fabs((double)trig_sinf(x) - sin((double)x));
+        double ec = fabs((double)trig_cosf(x) - cos((double)x));
+        if (e > worst) worst = e;
+        if (ec > worst) worst = ec;
+    }
+    for (int k = 0; k <= 1000; k++) {
+        double u = k / 1000.0;
+        double e = fabs(trig_cos_pi_d(u) - cos(TRIG_PI * u));
+        if (e > worst_d) worst_d = e;
+    }
+    // Float range reduction by 2pi dominates far from 0; motion code calls
+    // trig_sin_core directly on [-pi/2, pi/2].
+    CHECK(worst < 2e-6, "trig_sinf/cosf error %g", worst);
+    CHECK(worst_d < 1e-12, "trig_cos_pi_d error %g", worst_d);
 }
 
 static void test_motion(void) {
@@ -234,45 +287,72 @@ static void test_motion(void) {
     check_move(0, 1e6f, 1600, 2000);     // long: float precision far from target
     check_move(-12345.678f, 12345.678f, 1500, 2000);
 
-    // Retarget mid-move: reverse direction smoothly, arrive exactly.
+    // Retarget mid-move: reverse smoothly, arrive exactly, for every profile.
+    for (int p = 0; p < PROFILE_COUNT; p++) {
+        motion_axis_t ax;
+        motion_init(&ax, 1500, 2000);
+        motion_set_profile(&ax, (motion_profile_t)p, 30);
+        motion_move_to(&ax, motion_steps_to_units(1000));
+        for (int k = 0; k < 500; k++)
+            motion_tick(&ax);
+        float v_at_switch = ax.vel;
+        motion_move_to(&ax, motion_steps_to_units(-200));
+        run_stats_t st = run_until_settled(&ax, 100000);
+        const char *n = motion_profile_name((motion_profile_t)p);
+        CHECK(v_at_switch > 500.0f, "%s retarget: only %f steps/s at switch", n, v_at_switch);
+        CHECK(ax.pos == motion_steps_to_units(-200), "%s retarget: ended at %f", n,
+              motion_units_to_steps(ax.pos));
+        CHECK(st.max_a <= 2000.0f * 1.01f, "%s retarget: accel %f", n, st.max_a);
+        CHECK(st.max_v <= 1500.0f * 1.002f, "%s retarget: speed %f", n, st.max_v);
+    }
+
+    // Jog (trapezoid): runs while refreshed, then decelerates to a stop.
     motion_axis_t ax;
     motion_init(&ax, 1500, 2000);
-    motion_move_to(&ax, motion_steps_to_units(1000));
-    for (int k = 0; k < 500; k++)
-        motion_tick(&ax);
-    float v_at_switch = ax.vel;
-    motion_move_to(&ax, motion_steps_to_units(-200));
-    run_stats_t st = run_until_idle(&ax, 100000);
-    CHECK(v_at_switch > 900.0f, "retarget: only %f steps/s at switch", v_at_switch);
-    CHECK(ax.pos == motion_steps_to_units(-200), "retarget: ended at %f", motion_units_to_steps(ax.pos));
-    CHECK(st.max_a <= 2000.0f * 1.001f, "retarget: accel %f", st.max_a);
-
-    // Jog: runs while refreshed, then decelerates to a stop by itself.
-    motion_init(&ax, 1500, 2000);
+    motion_set_profile(&ax, PROFILE_TRAP, 0);
     motion_jog(&ax, 500, 100);
     for (int k = 0; k < 300; k++)
         motion_tick(&ax);
-    CHECK(ax.mode == MODE_IDLE && ax.vel == 0.0f, "jog did not time out (mode %d, v %f)", ax.mode, ax.vel);
+    CHECK(ax.settled && ax.vel == 0.0f, "jog did not time out (mode %d, v %f)", ax.mode, ax.vel);
+    // Ramp up is cut at 100 ms (v = 200), then 0.1 s down: 10 + 10 steps.
     float p = motion_units_to_steps(ax.pos);
-    // 0.25 s ramp up + ~0 cruise + 0.25 s ramp down... ramp up is cut at 100 ms
-    // (v = 200), then 0.1 s down: travel = 10 + 10 = 20 steps.
     CHECK(fabsf(p - 20.0f) < 0.5f, "jog travel %f steps", p);
+
+    // Same jog through the s-curve filter: same travel, exactly.
+    motion_axis_t ax2;
+    motion_init(&ax2, 1500, 2000);
+    motion_jog(&ax2, 500, 100);
+    run_until_settled(&ax2, 1000);
+    CHECK(ax2.pos == ax.pos, "s-curve jog travel %f vs trapezoid %f",
+          motion_units_to_steps(ax2.pos), p);
 
     // Velocity, then stop: decelerates and settles.
     motion_init(&ax, 1500, 2000);
+    motion_set_profile(&ax, PROFILE_TRAP, 0);
     motion_set_velocity(&ax, -800);
     for (int k = 0; k < 1000; k++)
         motion_tick(&ax);
     CHECK(fabsf(ax.vel + 800.0f) < 1e-3f, "velocity mode at %f", ax.vel);
     motion_stop(&ax);
-    st = run_until_idle(&ax, 10000);
+    run_stats_t st = run_until_settled(&ax, 10000);
     CHECK(ax.settled && st.ticks >= 399 && st.ticks <= 401, "stop took %d ticks", st.ticks);
 
-    // set_position only while settled.
+    // Stop during a quintic move hands over to the ramp without a jump.
+    motion_init(&ax, 1500, 2000);
+    motion_set_profile(&ax, PROFILE_QUINTIC, 0);
+    motion_move_to(&ax, motion_steps_to_units(2000));
+    for (int k = 0; k < 600; k++)
+        motion_tick(&ax);
+    motion_stop(&ax);
+    st = run_until_settled(&ax, 10000);
+    CHECK(ax.settled && st.max_a <= 2000.0f * 1.01f, "quintic stop: accel %f", st.max_a);
+
+    // Profile and position changes only while settled.
     CHECK(motion_set_position(&ax, 0), "set_position refused while settled");
     motion_set_velocity(&ax, 10);
     motion_tick(&ax);
     CHECK(!motion_set_position(&ax, 0), "set_position allowed while moving");
+    CHECK(!motion_set_profile(&ax, PROFILE_TRAP, 0), "set_profile allowed while moving");
 }
 
 int main(void) {
@@ -280,6 +360,7 @@ int main(void) {
     test_phase_inc();
     test_microstep();
     test_ladder();
+    test_trig();
     test_motion();
     if (failures) {
         printf("%d check(s) failed\n", failures);

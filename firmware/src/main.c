@@ -22,6 +22,7 @@
 #include "control.h"
 #include "hbridge.h"
 #include "led.h"
+#include "trig.h"
 
 #define POWER_UP_SETTLE_MS 100
 // Each ring holds 3.2 ms; trip well before a stalled producer lets it wrap.
@@ -158,7 +159,7 @@ static void stress_update(float t) {
         control_cmd_t c = {
             .type = CMD_VELOCITY,
             .axes = (uint16_t)(1u << i),
-            .f1 = pause ? 0.0f : STRESS_PEAK * sinf(phase),
+            .f1 = pause ? 0.0f : STRESS_PEAK * trig_sinf(phase),
         };
         control_post(&c);
     }

@@ -95,7 +95,9 @@ static void apply(const control_cmd_t *c) {
             motion_move_to(ax, c->pos);
             break;
         case CMD_MOVE_REL:
-            motion_move_to(ax, (ax->mode == MODE_POSITION ? ax->target : ax->pos) + c->pos);
+            // Relative to where the generator is headed, not the filtered
+            // output (which lags it).
+            motion_move_to(ax, (ax->mode == MODE_POSITION ? ax->target : ax->gen_pos) + c->pos);
             break;
         case CMD_VELOCITY:
             motion_set_velocity(ax, c->f1);
@@ -116,17 +118,18 @@ static void apply(const control_cmd_t *c) {
             if (c->f2 > 0.0f)
                 ax->amax = c->f2;
             break;
+        case CMD_PROFILE:
+            if (!motion_set_profile(ax, (motion_profile_t)c->ms, (uint32_t)c->f1))
+                rejected++;
+            break;
         }
     }
 }
 
 // Halt every axis where it is (outputs are already off).
 static void halt_all(void) {
-    for (int i = 0; i < NUM_MOTORS; i++) {
-        axes[i].mode = MODE_IDLE;
-        axes[i].vel = 0.0f;
-        axes[i].target = axes[i].pos;
-    }
+    for (int i = 0; i < NUM_MOTORS; i++)
+        motion_halt(&axes[i]);
 }
 
 // Returns true if a stop is latched (outputs are off).
@@ -160,6 +163,8 @@ static void publish(uint32_t tick, const float *amp, uint32_t hold) {
         snap_buf.amp[i] = amp[i];
         snap_buf.vmax[i] = axes[i].vmax;
         snap_buf.amax[i] = axes[i].amax;
+        snap_buf.profile[i] = (uint8_t)axes[i].profile;
+        snap_buf.jerk_ms[i] = (uint16_t)(axes[i].jerk_ticks * 1000u / MOTION_TICK_HZ);
     }
     snap_buf.holding_mask = hold;
     snap_buf.rejected = rejected;
@@ -216,7 +221,7 @@ void __time_critical_func(control_core1_main)(void) {
             // Keep draining commands so the queue doesn't fill; motion ones
             // are dropped (the axes are halted).
             while (queue_try_remove(&cmd_queue, &cmd))
-                if (cmd.type == CMD_SET_POS || cmd.type == CMD_LIMITS)
+                if (cmd.type == CMD_SET_POS || cmd.type == CMD_LIMITS || cmd.type == CMD_PROFILE)
                     apply(&cmd);
             for (int i = 0; i < NUM_MOTORS; i++)
                 amp[i] = 0.0f;

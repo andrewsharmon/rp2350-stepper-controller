@@ -28,6 +28,7 @@ typedef enum {
     CMD_STOP,        // decelerate to rest
     CMD_SET_POS,     // pos: redefine position (axis must be settled)
     CMD_LIMITS,      // f1: vmax, f2: amax (<= 0 leaves that limit unchanged)
+    CMD_PROFILE,     // ms: profile (motion_profile_t), f1: jerk time in ms
 } control_cmd_type_t;
 
 typedef struct {
@@ -45,8 +46,10 @@ typedef struct {
     uint8_t mode[NUM_MOTORS];      // motion_mode_t
     float amp[NUM_MOTORS];
     float vmax[NUM_MOTORS], amax[NUM_MOTORS];
+    uint8_t profile[NUM_MOTORS];   // motion_profile_t
+    uint16_t jerk_ms[NUM_MOTORS];
     uint32_t holding_mask;
-    uint32_t rejected;             // commands refused (e.g. set-pos while moving)
+    uint32_t rejected;             // commands refused (z / prof need the axis at rest)
 } control_snapshot_t;
 
 // Shared flags. Core 1 writes the read-only ones.

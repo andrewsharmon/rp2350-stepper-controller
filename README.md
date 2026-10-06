@@ -20,7 +20,7 @@ DRV8833-class dual H-bridges (AT8833).
 | 1 | Hardware spec and KiCad schematics for all three boards | first pass, **not reviewed** (open part picks in [hardware/README.md](hardware/README.md)) |
 | 2 | One motor: sine PWM via PIO + DMA | done, verified on hardware |
 | 3 | 10-axis PWM, ADC monitor, e-stop/button ladder, WS2812 | done on Pico 2; ladder buttons not yet bench-wired |
-| 4 | Trajectory generators and profiles, jog modes, telemetry | in progress: position/velocity/jog modes, trapezoid, text telemetry done |
+| 4 | Trajectory generators and profiles, jog modes, telemetry | in progress: modes, five motion profiles, text telemetry done; PVT streaming next |
 | 5 | Coordinated groups and planner, USB protocol, host tool | |
 | 6 | I²C target, cam/LED shows, flash config, standalone mode | |
 | 7 | PCB layout, fab, bring-up of the board stack | |
@@ -28,7 +28,8 @@ DRV8833-class dual H-bridges (AT8833).
 What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
 
 - **PWM:** 20 kHz, four-segment H-bridge PWM with slow-decay brake off-time and 1/256-step sine microstepping. Duties below the driver's 0.5 µs minimum pulse are error-diffused.
-- **10 axes:** each has its own position, velocity or jog mode on a 1 kHz trajectory tick. Moves use a retargetable trapezoid that lands exactly on the target. Drive amplitude depends on speed, with lower holding current at standstill. Core 1 is about 32% loaded, core 0 about 0.5%.
+- **10 axes:** each has its own position, velocity or jog mode on a 1 kHz trajectory tick. Drive amplitude depends on speed, with lower holding current at standstill. Core 1 is about 33-35% loaded, core 0 about 0.5%.
+- **Motion profiles per axis:** `trap`, `scurve` (the default: jerk-limited by a moving average, Tj = 30 ms), `smooth` (two moving averages), `cosine` and `quintic`. Every profile lands exactly on its target within the speed and acceleration limits, and moves can be redirected mid-move without jumps.
 - **Safety:** an e-stop or driver fault on the analog ladder cuts all outputs in about 30 µs. A watchdog on core 0 drops outputs to coast if core 1 stalls.
 - **Status LEDs:** a WS2812 chain shows overall status plus each axis's speed and direction.
 
@@ -97,6 +98,7 @@ m 1 500          move axis 1 to 500 full steps
 mr * -100        move every axis back 100 steps
 j 3 400          jog axis 3 at 400 steps/s (stops unless repeated within 300 ms)
 lim 1 1200 4000  axis 1 limits: 1200 steps/s, 4000 steps/s^2
+prof * quintic   minimum-jerk moves on every axis (axes must be at rest)
 t 100            100 telemetry lines/s: T <tick> then position, speed per axis
 ?                status, loads and per-axis table
 ```
@@ -105,7 +107,8 @@ t 100            100 telemetry lines/s: T <tick> then position, speed per axis
 
 - **Sine table:** the SDK's float `sinf` returned wrong values near multiples
   of π/2 on the RP2350, which produced reverse pulses at each coil peak. The
-  sine table is generated offline (`firmware/tools/gen_sine_lut.py`) instead.
+  sine table is generated offline (`firmware/tools/gen_sine_lut.py`), and the
+  motion code uses its own polynomials (`firmware/src/trig.h`).
 - **Endless DMA:** on the RP2350, endless-mode DMA (`TRANS_COUNT` mode 0xF)
   still needs a non-zero count, or the channel completes immediately.
 
