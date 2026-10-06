@@ -279,6 +279,72 @@ static void test_trig(void) {
     CHECK(worst_d < 1e-12, "trig_cos_pi_d error %g", worst_d);
 }
 
+static void test_pvt(void) {
+    // Stream A(1 - cos wt) (starts at rest; 200 steps, 1 Hz) as 20 ms points.
+    const float A = 200.0f, w = 2.0f * (float)M_PI;
+    motion_axis_t ax;
+    motion_init(&ax, 1500, 2000);  // s-curve profile: PVT must bypass it
+    int k = 1;
+    for (; k <= 20; k++) {
+        float t = k * 0.02f;
+        CHECK(motion_pvt_push(&ax, motion_steps_to_units(A * (1 - cosf(w * t))), A * w * sinf(w * t), 20),
+              "push %d refused", k);
+    }
+    CHECK(motion_pvt_start(&ax), "pvt start refused");
+    CHECK(!motion_pvt_start(&ax), "pvt start allowed while moving");
+    float max_err = 0, max_a = 0, v_prev = 0;
+    for (int n = 1; n <= 3000; n++) {  // 3 s, refilling as we go
+        motion_tick(&ax);
+        if (ax.pvt_count < 16 && k <= 150) {
+            float t = k * 0.02f;
+            motion_pvt_push(&ax, motion_steps_to_units(A * (1 - cosf(w * t))), A * w * sinf(w * t), 20);
+            k++;
+        }
+        float t = n / 1000.0f;
+        float err = fabsf(motion_units_to_steps(ax.pos) - A * (1 - cosf(w * t)));
+        if (n <= 2900 && err > max_err) max_err = err;
+        float a = fabsf(ax.vel - v_prev) * 1000.0f;
+        if (n > 1 && a > max_a) max_a = a;
+        v_prev = ax.vel;
+    }
+    // Cubic Hermite through exact samples of a sine: error ~ (h w)^4 A / 384.
+    CHECK(max_err < 0.01f, "pvt tracking error %f steps", max_err);
+    CHECK(max_a < A * w * w * 1.1f, "pvt accel %f vs %f", max_a, A * w * w);
+    // Stream ended at t = 3.0 s, at rest by coincidence; add a moving end.
+    motion_init(&ax, 1500, 2000);
+    motion_pvt_push(&ax, motion_steps_to_units(20), 400, 100);
+    motion_pvt_start(&ax);
+    for (int n = 0; n < 100; n++)  // the segment itself accelerates at 4000
+        motion_tick(&ax);
+    run_stats_t st = run_until_settled(&ax, 10000);
+    CHECK(ax.settled && ax.pvt_underruns == 1, "underrun: settled %d, count %u", ax.settled, ax.pvt_underruns);
+    CHECK(st.max_a <= 2000.0f * 1.01f, "underrun brake accel %f", st.max_a);
+
+    // A stream ending at v = 0 stops exactly on its last point.
+    motion_init(&ax, 1500, 2000);
+    motion_pvt_push(&ax, motion_steps_to_units(10), 300, 50);
+    motion_pvt_push(&ax, motion_steps_to_units(25.5f), 0, 100);
+    motion_pvt_start(&ax);
+    run_until_settled(&ax, 1000);
+    CHECK(ax.settled && ax.pos == motion_steps_to_units(25.5f) && ax.pvt_underruns == 0,
+          "pvt end at %f, underruns %u", motion_units_to_steps(ax.pos), ax.pvt_underruns);
+
+    // Queue capacity.
+    motion_init(&ax, 1500, 2000);
+    unsigned pushed = 0;
+    while (motion_pvt_push(&ax, 0, 0, 10) && pushed < 1000)
+        pushed++;
+    CHECK(pushed == MOTION_PVT_QUEUE, "queue took %u points", pushed);
+
+    // Another command abandons the stream.
+    motion_pvt_start(&ax);
+    motion_tick(&ax);
+    motion_move_to(&ax, motion_steps_to_units(5));
+    run_until_settled(&ax, 2000);
+    CHECK(ax.pos == motion_steps_to_units(5) && ax.pvt_count == 0, "move after pvt ended at %f",
+          motion_units_to_steps(ax.pos));
+}
+
 static void test_motion(void) {
     check_move(0, 1000, 1500, 2000);     // trapezoid
     check_move(0, 10, 1500, 2000);       // triangle
@@ -362,6 +428,7 @@ int main(void) {
     test_ladder();
     test_trig();
     test_motion();
+    test_pvt();
     if (failures) {
         printf("%d check(s) failed\n", failures);
         return 1;

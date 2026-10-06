@@ -19,6 +19,7 @@
 #define MOTION_TICK_HZ        1000u
 #define MOTION_UNITS_PER_STEP (1ll << 30)
 #define MOTION_MAX_FILTER     100u   // ticks per moving-average stage (100 ms)
+#define MOTION_PVT_QUEUE      32u    // streamed points buffered per axis
 
 typedef enum {
     MODE_IDLE,      // holding position, v = 0
@@ -26,6 +27,7 @@ typedef enum {
     MODE_VELOCITY,  // ramp to `cmd_vel` and stay there
     MODE_JOG,       // like velocity, but decelerates to a stop if not
                     // refreshed within the jog timeout
+    MODE_PVT,       // follow streamed position/velocity/time points
 } motion_mode_t;
 
 typedef enum {
@@ -37,6 +39,14 @@ typedef enum {
     PROFILE_QUINTIC,  // fixed-time minimum-jerk quintic (position mode only)
     PROFILE_COUNT,
 } motion_profile_t;
+
+// One streamed point: reach `pos` at speed `vel`, `ticks` after the
+// previous point (cubic Hermite in between).
+typedef struct {
+    int64_t pos;
+    float vel;
+    uint32_t ticks;
+} motion_pvt_point_t;
 
 // Moving average over the last `len` per-tick position deltas, with the
 // division remainder carried so the output total equals the input total.
@@ -73,6 +83,17 @@ typedef struct {
     float seg_T;          // duration, s
     int64_t seg_corr;     // per-tick drift correction (units)
 
+    // Streamed PVT: queue and the segment being followed.
+    motion_pvt_point_t pvt_q[MOTION_PVT_QUEUE];
+    uint32_t pvt_head, pvt_count;
+    int64_t pvt_p0;
+    float pvt_c[3];       // x(tau) = c0 tau + c1 tau^2 + c2 tau^3, steps
+    uint32_t pvt_tick, pvt_ticks;
+    int64_t pvt_p1;
+    float pvt_v1;
+    uint32_t pvt_underruns;
+    bool unfiltered;      // PVT (and its underrun ramp) bypass the filters
+
     // Settings
     float vmax;           // full steps/s
     float amax;           // full steps/s^2
@@ -89,6 +110,12 @@ void motion_move_to(motion_axis_t *ax, int64_t target);
 void motion_set_velocity(motion_axis_t *ax, float vel);
 void motion_jog(motion_axis_t *ax, float vel, uint32_t timeout_ms);
 void motion_stop(motion_axis_t *ax);   // decelerate to rest, then IDLE
+
+// Streamed PVT. Points queue up; motion_pvt_start begins following them
+// (only from rest, so several axes can start on the same tick). Running
+// out of points while moving decelerates at amax and counts an underrun.
+bool motion_pvt_push(motion_axis_t *ax, int64_t pos, float vel, uint32_t ms);
+bool motion_pvt_start(motion_axis_t *ax);
 
 // Change profile / jerk time (only while settled; returns false otherwise).
 bool motion_set_profile(motion_axis_t *ax, motion_profile_t profile, uint32_t jerk_ms);

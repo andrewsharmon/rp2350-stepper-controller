@@ -54,6 +54,8 @@ static int64_t filter_step(motion_filter_t *f, int64_t in) {
 }
 
 static uint32_t filter_stages(const motion_axis_t *ax) {
+    if (ax->unfiltered)
+        return 0;
     return ax->profile == PROFILE_SCURVE ? 1 : ax->profile == PROFILE_SMOOTH ? 2 : 0;
 }
 
@@ -90,6 +92,7 @@ static bool fixed_time(const motion_axis_t *ax) {
 static void start_segment(motion_axis_t *ax);
 
 void motion_move_to(motion_axis_t *ax, int64_t target) {
+    ax->pvt_count = 0;  // any other command abandons a PVT stream
     ax->target = target;
     ax->mode = MODE_POSITION;
     ax->settled = false;
@@ -99,6 +102,7 @@ void motion_move_to(motion_axis_t *ax, int64_t target) {
 }
 
 void motion_set_velocity(motion_axis_t *ax, float vel) {
+    ax->pvt_count = 0;
     ax->cmd_vel = vel;
     ax->mode = MODE_VELOCITY;
     ax->settled = false;
@@ -115,7 +119,8 @@ void motion_stop(motion_axis_t *ax) {
     if (ax->mode == MODE_IDLE)
         return;
     // Velocity mode toward zero drops to IDLE once at rest. A fixed-time
-    // segment hands its current speed over to the trapezoid ramp.
+    // segment or PVT stream hands its current speed to the trapezoid ramp.
+    ax->pvt_count = 0;
     ax->seg_active = false;
     ax->cmd_vel = 0.0f;
     ax->mode = MODE_VELOCITY;
@@ -128,12 +133,63 @@ bool motion_set_position(motion_axis_t *ax, int64_t pos) {
     return true;
 }
 
+// --- streamed PVT -------------------------------------------------------------
+
+bool motion_pvt_push(motion_axis_t *ax, int64_t pos, float vel, uint32_t ms) {
+    if (ax->pvt_count >= MOTION_PVT_QUEUE)
+        return false;
+    uint32_t ticks = ms * (MOTION_TICK_HZ / 1000u);
+    motion_pvt_point_t *pt = &ax->pvt_q[(ax->pvt_head + ax->pvt_count) % MOTION_PVT_QUEUE];
+    pt->pos = pos;
+    pt->vel = vel;
+    pt->ticks = ticks ? ticks : 1;
+    ax->pvt_count++;
+    return true;
+}
+
+// Begin the cubic from the current generator state to the next queued
+// point. Returns false if the queue is empty.
+static bool pvt_next(motion_axis_t *ax) {
+    if (ax->pvt_count == 0)
+        return false;
+    motion_pvt_point_t *pt = &ax->pvt_q[ax->pvt_head];
+    ax->pvt_head = (ax->pvt_head + 1) % MOTION_PVT_QUEUE;
+    ax->pvt_count--;
+
+    float T = (float)pt->ticks / (float)MOTION_TICK_HZ;
+    float d = (float)(pt->pos - ax->gen_pos) / (float)MOTION_UNITS_PER_STEP;
+    float v0T = ax->gen_vel * T, v1T = pt->vel * T;
+    ax->pvt_p0 = ax->gen_pos;
+    ax->pvt_c[0] = v0T;
+    ax->pvt_c[1] = 3.0f * d - 2.0f * v0T - v1T;
+    ax->pvt_c[2] = -2.0f * d + v0T + v1T;
+    ax->pvt_tick = 0;
+    ax->pvt_ticks = pt->ticks;
+    ax->pvt_p1 = pt->pos;
+    ax->pvt_v1 = pt->vel;
+    return true;
+}
+
+bool motion_pvt_start(motion_axis_t *ax) {
+    if (!ax->settled || ax->pvt_count == 0)
+        return false;
+    ax->unfiltered = true;
+    ax->mode = MODE_PVT;
+    ax->settled = false;
+    ax->seg_active = false;
+    ax->gen_pos = ax->pos;  // settled: generator and output agree
+    ax->gen_vel = ax->gen_acc = 0.0f;
+    return pvt_next(ax);
+}
+
 void motion_halt(motion_axis_t *ax) {
     ax->gen_pos = ax->target = ax->pos;
     ax->vel = ax->gen_vel = ax->gen_acc = 0.0f;
     ax->mode = MODE_IDLE;
     ax->seg_active = false;
     ax->settled = true;
+    ax->unfiltered = false;
+    ax->pvt_count = 0;
     filter_reset(&ax->filt[0], ax->jerk_ticks);
     filter_reset(&ax->filt[1], ax->jerk_ticks);
 }
@@ -313,6 +369,35 @@ static bool generate(motion_axis_t *ax) {
         }
         break;
 
+    case MODE_PVT: {
+        if (++ax->pvt_tick >= ax->pvt_ticks) {
+            // Knot: land exactly, then continue with the next point.
+            ax->gen_acc = (ax->pvt_v1 - v) * (float)MOTION_TICK_HZ;
+            ax->gen_pos = ax->pvt_p1;
+            ax->gen_vel = ax->pvt_v1;
+            if (pvt_next(ax))
+                return true;
+            if (ax->gen_vel == 0.0f) {
+                ax->mode = MODE_IDLE;
+                return true;  // this tick still moved
+            }
+            // Ran dry while moving: brake on the trapezoid ramp.
+            ax->pvt_underruns++;
+            ax->cmd_vel = 0.0f;
+            ax->mode = MODE_VELOCITY;
+            return true;
+        }
+        float T = (float)ax->pvt_ticks / (float)MOTION_TICK_HZ;
+        float u = (float)ax->pvt_tick / (float)ax->pvt_ticks;
+        const float *c = ax->pvt_c;
+        float x = u * (c[0] + u * (c[1] + u * c[2]));
+        v_new = (c[0] + u * (2.0f * c[1] + u * 3.0f * c[2])) / T;
+        ax->gen_pos = ax->pvt_p0 + (int64_t)(x * UNITS_PER_STEP_F);
+        ax->gen_acc = (v_new - v) * (float)MOTION_TICK_HZ;
+        ax->gen_vel = v_new;
+        return true;
+    }
+
     case MODE_JOG:
         if (ax->jog_ticks_left > 0)
             ax->jog_ticks_left--;
@@ -353,6 +438,8 @@ void motion_tick(motion_axis_t *ax) {
     ax->pos += delta;
     ax->vel = (float)delta * STEPS_PER_UNIT_F * (float)MOTION_TICK_HZ;
     ax->settled = !moving && flushed && ax->mode == MODE_IDLE;
-    if (ax->settled)
+    if (ax->settled) {
         ax->vel = 0.0f;
+        ax->unfiltered = false;
+    }
 }

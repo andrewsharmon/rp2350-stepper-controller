@@ -20,7 +20,7 @@ DRV8833-class dual H-bridges (AT8833).
 | 1 | Hardware spec and KiCad schematics for all three boards | first pass, **not reviewed** (open part picks in [hardware/README.md](hardware/README.md)) |
 | 2 | One motor: sine PWM via PIO + DMA | done, verified on hardware |
 | 3 | 10-axis PWM, ADC monitor, e-stop/button ladder, WS2812 | done on Pico 2; ladder buttons not yet bench-wired |
-| 4 | Trajectory generators and profiles, jog modes, telemetry | in progress: modes, five motion profiles, text telemetry done; PVT streaming next |
+| 4 | Trajectory generators and profiles, jog modes, telemetry | in progress: modes, five profiles, PVT streaming, text telemetry done; telemetry options next |
 | 5 | Coordinated groups and planner, USB protocol, host tool | |
 | 6 | I²C target, cam/LED shows, flash config, standalone mode | |
 | 7 | PCB layout, fab, bring-up of the board stack | |
@@ -29,6 +29,7 @@ What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
 
 - **PWM:** 20 kHz, four-segment H-bridge PWM with slow-decay brake off-time and 1/256-step sine microstepping. Duties below the driver's 0.5 µs minimum pulse are error-diffused.
 - **10 axes:** each has its own position, velocity or jog mode on a 1 kHz trajectory tick. Drive amplitude depends on speed, with lower holding current at standstill. Core 1 is about 33-35% loaded, core 0 about 0.5%.
+- **Streamed PVT:** the host sends position/velocity/time points, and each axis follows a cubic through them. A 10-axis wave streamed at 20 ms per point tracked the ideal curve within 0.0005 steps. Running out of points while moving brakes safely.
 - **Motion profiles per axis:** `trap`, `scurve` (the default: jerk-limited by a moving average, Tj = 30 ms), `smooth` (two moving averages), `cosine` and `quintic`. Every profile lands exactly on its target within the speed and acceleration limits, and moves can be redirected mid-move without jumps.
 - **Safety:** an e-stop or driver fault on the analog ladder cuts all outputs in about 30 µs. A watchdog on core 0 drops outputs to coast if core 1 stalls.
 - **Status LEDs:** a WS2812 chain shows overall status plus each axis's speed and direction.
@@ -36,6 +37,7 @@ What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
 ## Repository layout
 
 ```
+tools/pvt_demo.py    host demo: streams a PVT wave over USB serial
 firmware/            Pico SDK (C) firmware
   src/               motor PWM (PIO/DMA), microstepping, ADC monitor, ladder, LEDs
   boards/            board header for the custom RP2354B controller
@@ -99,8 +101,17 @@ mr * -100        move every axis back 100 steps
 j 3 400          jog axis 3 at 400 steps/s (stops unless repeated within 300 ms)
 lim 1 1200 4000  axis 1 limits: 1200 steps/s, 4000 steps/s^2
 prof * quintic   minimum-jerk moves on every axis (axes must be at rest)
+p 2 150 300 20   PVT point: axis 2 reaches 150 steps at 300 steps/s, 20 ms after the last
+pgo 1,2          start axes 1 and 2 following their queued points on the same tick
 t 100            100 telemetry lines/s: T <tick> then position, speed per axis
 ?                status, loads and per-axis table
+```
+
+`tools/pvt_demo.py` streams a travelling wave across every axis as PVT points
+(standard-library Python, macOS/Linux):
+
+```bash
+tools/pvt_demo.py --amp 200 --hz 0.5 --seconds 15
 ```
 
 ## Notes

@@ -18,6 +18,7 @@ static char line[LINE_MAX];
 static uint32_t line_len;
 static uint32_t telem_period_us;  // 0 = off
 static uint32_t telem_last_us;
+static bool echo = true;  // off for host tools: no echo, no prompt
 
 static const char help_text[] =
     "axes: 1-10, a list like 1,3,5, or * for all. Positions in full steps.\n"
@@ -28,10 +29,13 @@ static const char help_text[] =
     "  s [ax]                stop (decelerate); all axes if none given\n"
     "  z <ax> [pos]          set current position (default 0; axis must be at rest)\n"
     "  lim <ax> <vmax> [amax]  speed / acceleration limits\n"
+    "  p <ax> <pos> <vel> <ms>  queue a PVT point: reach pos at vel, ms after the last\n"
+    "  pgo <ax>              start following queued PVT points (axes at rest; same tick)\n"
     "  prof <ax> <name> [ms] motion profile: trap, scurve, smooth, cosine, quintic;\n"
     "                        ms = jerk time for scurve/smooth (default 30, max 100)\n"
     "  amp auto|<percent>    drive amplitude: automatic curve, or fixed\n"
     "  t <hz>                telemetry lines per second (0 = off, max 200)\n"
+    "  echo on|off           echo typed characters and show the prompt (off for scripts)\n"
     "  stress on|off         every axis sweeps its own speed wave\n"
     "  ?                     status\n"
     "  c                     clear a latched e-stop / fault\n"
@@ -50,6 +54,7 @@ static const char *mode_name(uint8_t m) {
     case MODE_POSITION: return "pos";
     case MODE_VELOCITY: return "vel";
     case MODE_JOG:      return "jog";
+    case MODE_PVT:      return "pvt";
     }
     return "?";
 }
@@ -100,10 +105,15 @@ static void print_axes(void) {
                motion_profile_name((motion_profile_t)s.profile[i]));
         if (s.profile[i] == PROFILE_SCURVE || s.profile[i] == PROFILE_SMOOTH)
             printf(" %u ms", s.jerk_ms[i]);
+        if (s.pvt_depth[i])
+            printf("  pvt queue %u", s.pvt_depth[i]);
         putchar('\n');
     }
+    if (s.pvt_underruns || s.pvt_dropped)
+        printf("  pvt: %lu underrun(s), %lu point(s) dropped (queue full)\n",
+               (unsigned long)s.pvt_underruns, (unsigned long)s.pvt_dropped);
     if (s.rejected)
-        printf("  %lu command(s) rejected (z and prof need the axis at rest)\n",
+        printf("  %lu command(s) rejected (z, prof and pgo need the axis at rest)\n",
                (unsigned long)s.rejected);
 }
 
@@ -160,6 +170,23 @@ static void run_line(char *buf) {
             goto usage;
         c.type = CMD_LIMITS;
         post(&c);
+    } else if (strcmp(cmd, "p") == 0 && argc == 5) {
+        c.axes = (uint16_t)parse_axes(argv[1]);
+        float ms;
+        if (!c.axes || !parse_float(argv[2], &f) || !parse_float(argv[3], &c.f1) ||
+            !parse_float(argv[4], &ms) || ms < 1.0f)
+            goto usage;
+        c.type = CMD_PVT_POINT;
+        c.pos = motion_steps_to_units(f);
+        c.ms = (uint32_t)ms;
+        app_set_stress(false);
+        post(&c);
+    } else if (strcmp(cmd, "pgo") == 0 && argc == 2) {
+        c.axes = (uint16_t)parse_axes(argv[1]);
+        if (!c.axes)
+            goto usage;
+        c.type = CMD_PVT_START;
+        post(&c);
     } else if (strcmp(cmd, "prof") == 0 && (argc == 3 || argc == 4)) {
         c.axes = (uint16_t)parse_axes(argv[1]);
         int p = 0;
@@ -186,6 +213,8 @@ static void run_line(char *buf) {
         telem_period_us = hz ? 1000000u / (uint32_t)hz : 0;
         if (hz)
             printf("telemetry: T <tick> then <position> <speed> per axis\n");
+    } else if (strcmp(cmd, "echo") == 0 && argc == 2) {
+        echo = strcmp(argv[1], "off") != 0;
     } else if (strcmp(cmd, "stress") == 0 && argc == 2) {
         app_set_stress(strcmp(argv[1], "on") == 0);
     } else if (strcmp(cmd, "c") == 0) {
@@ -213,19 +242,23 @@ usage:
 
 void console_input(int c) {
     if (c == '\r' || c == '\n') {
-        putchar('\n');
+        if (echo)
+            putchar('\n');
         line[line_len] = '\0';
         line_len = 0;
         run_line(line);
-        printf("> ");
+        if (echo)
+            printf("> ");
     } else if (c == '\b' || c == 0x7f) {
         if (line_len) {
             line_len--;
-            printf("\b \b");
+            if (echo)
+                printf("\b \b");
         }
     } else if (isprint(c) && line_len < LINE_MAX - 1) {
         line[line_len++] = (char)c;
-        putchar(c);
+        if (echo)
+            putchar(c);
     }
 }
 

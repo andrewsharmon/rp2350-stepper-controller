@@ -29,6 +29,8 @@ typedef enum {
     CMD_SET_POS,     // pos: redefine position (axis must be settled)
     CMD_LIMITS,      // f1: vmax, f2: amax (<= 0 leaves that limit unchanged)
     CMD_PROFILE,     // ms: profile (motion_profile_t), f1: jerk time in ms
+    CMD_PVT_POINT,   // pos: position (units), f1: speed, ms: time since previous point
+    CMD_PVT_START,   // start following queued points (axes must be at rest)
 } control_cmd_type_t;
 
 typedef struct {
@@ -48,6 +50,9 @@ typedef struct {
     float vmax[NUM_MOTORS], amax[NUM_MOTORS];
     uint8_t profile[NUM_MOTORS];   // motion_profile_t
     uint16_t jerk_ms[NUM_MOTORS];
+    uint8_t pvt_depth[NUM_MOTORS];  // queued PVT points
+    uint32_t pvt_underruns;         // all axes
+    uint32_t pvt_dropped;           // points refused: queue full
     uint32_t holding_mask;
     uint32_t rejected;             // commands refused (z / prof need the axis at rest)
 } control_snapshot_t;

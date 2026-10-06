@@ -52,6 +52,7 @@ static control_snapshot_t snap_buf;
 static motion_axis_t axes[NUM_MOTORS];
 static microstep_t steppers[NUM_MOTORS];
 static uint32_t rejected;
+static uint32_t pvt_dropped;
 
 void control_init(void) {
     queue_init(&cmd_queue, sizeof(control_cmd_t), CMD_QUEUE_LEN);
@@ -122,6 +123,14 @@ static void apply(const control_cmd_t *c) {
             if (!motion_set_profile(ax, (motion_profile_t)c->ms, (uint32_t)c->f1))
                 rejected++;
             break;
+        case CMD_PVT_POINT:
+            if (!motion_pvt_push(ax, c->pos, c->f1, c->ms))
+                pvt_dropped++;
+            break;
+        case CMD_PVT_START:
+            if (!motion_pvt_start(ax))
+                rejected++;
+            break;
         }
     }
 }
@@ -166,6 +175,13 @@ static void publish(uint32_t tick, const float *amp, uint32_t hold) {
         snap_buf.profile[i] = (uint8_t)axes[i].profile;
         snap_buf.jerk_ms[i] = (uint16_t)(axes[i].jerk_ticks * 1000u / MOTION_TICK_HZ);
     }
+    uint32_t underruns = 0;
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        snap_buf.pvt_depth[i] = (uint8_t)axes[i].pvt_count;
+        underruns += axes[i].pvt_underruns;
+    }
+    snap_buf.pvt_underruns = underruns;
+    snap_buf.pvt_dropped = pvt_dropped;
     snap_buf.holding_mask = hold;
     snap_buf.rejected = rejected;
     __dmb();
