@@ -157,7 +157,7 @@ def jlc_netclasses(pro_path):
          "diff_pair_width": 0.2, "diff_pair_gap": 0.15, "microvia_diameter": 0.3, "microvia_drill": 0.1,
          "wire_width": 6, "bus_width": 12, "line_style": 0, "pcb_color": "rgba(0, 0, 0, 0.000)",
          "schematic_color": "rgba(0, 0, 0, 0.000)", "priority": 2147483647},
-        {"name": "Power", "clearance": 0.15, "track_width": 0.4, "via_diameter": 0.6, "via_drill": 0.3,
+        {"name": "Power", "clearance": 0.1, "track_width": 0.4, "via_diameter": 0.6, "via_drill": 0.3,
          "diff_pair_width": 0.2, "diff_pair_gap": 0.15, "microvia_diameter": 0.3, "microvia_drill": 0.1,
          "wire_width": 6, "bus_width": 12, "line_style": 0, "pcb_color": "rgba(0, 0, 0, 0.000)",
          "schematic_color": "rgba(0, 0, 0, 0.000)", "priority": 0},
@@ -191,7 +191,8 @@ def controller(board, fps):
     # USB-C: receptacle mouth flush with the top edge (front of the courtyard
     # 0.5 mm past it; the enclosure supports the shell).
     usb = fps["J1"]
-    place(usb, CX, top, rot=180)
+    # 2 mm left of centre so the core regulator's inductor fits by its pins.
+    place(usb, CX - 2.0, top, rot=180)
     bb = usb.GetCourtyard(pcbnew.F_CrtYd).BBox()
     usb.Move(pcbnew.VECTOR2I(0, MM(top - 0.5) - bb.GetTop()))
 
@@ -207,9 +208,9 @@ def controller(board, fps):
         # Core regulator: pins 61-65 (AVDD, PGND, LX, VIN, 1V1) at the MCU's top-right.
         "C14": (ux + 2.0, uy - 6.85, 90),   # 1V1 out, by pin 65
         "C10": (ux + 3.1, uy - 6.85, 90),   # VREG_VIN, by pin 64
-        "L1": (ux + 7.2, uy - 7.0, 0),
-        "C15": (ux + 7.2, uy - 9.4, 0),     # VREG_AVDD filter
-        "R1": (ux + 7.2, uy - 10.6, 0),
+        "L1": (ux + 5.4, uy - 7.0, 0),      # by pin 63 (LX)
+        "C15": (ux + 5.4, uy - 9.4, 0),     # VREG_AVDD filter
+        "R1": (ux + 5.4, uy - 10.6, 0),
         # Power path: VBUS -> F1 -> D1 -> V5_IN -> Q1 -> V5.
         "F1": (left + 3.5, top + 3.0, 0),
         "D1": (left + 4.0, top + 7.2, 0),
@@ -261,15 +262,15 @@ def controller(board, fps):
     bottom_parts = {
         # Crystal below the chip, by XIN/XOUT (pins 30/31).
         "Y1": (ux, uy + 7.6, 0),
-        "C16": (ux - 3.0, uy + 7.6, 90),
+        "C16": (ux - 3.0, uy + 7.6, 270),  # XIN pad towards Y1 pin 1
         "C17": (ux + 3.0, uy + 7.6, 90),
         "R2": (ux + 1.4, uy + 5.3, 0),
         # USB: ESD and series resistors under the receptacle, CC pull-downs.
-        "U2": (CX, top + 7.6, 0),
-        "R3": (CX + 1.5, top + 10.2, 0),
-        "R4": (CX - 1.5, top + 10.2, 0),
-        "R5": (CX - 3.4, top + 4.0, 90),
-        "R6": (CX + 3.4, top + 4.0, 90),
+        "U2": (CX - 2.0, top + 7.6, 0),
+        "R3": (CX - 0.5, top + 10.2, 0),
+        "R4": (CX - 3.5, top + 10.2, 0),
+        "R5": (CX - 5.4, top + 4.0, 90),
+        "R6": (CX + 1.4, top + 4.0, 90),
         # LDO and soft-start under the power path.
         "U3": (left + 4.0, top + 3.0, 0),
         "C19": (left + 6.8, top + 3.0, 90),
