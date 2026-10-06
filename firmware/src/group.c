@@ -39,7 +39,7 @@ bool group_create(group_t *g, int8_t id, motion_axis_t *axes, const uint8_t *mem
         ax->gen_vel = ax->gen_acc = 0.0f;
         ax->mode = MODE_GROUP;
         ax->group = id;
-        ax->group_moving = false;
+        ax->ext_moving = false;
     }
     return true;
 }
@@ -214,7 +214,7 @@ static void set_axes(group_t *g, motion_axis_t *axes, const group_seg_t *sg, flo
         motion_axis_t *ax = &axes[g->axis[k]];
         ax->gen_pos = at_end ? sg->end[k] : g->start[k] + (int64_t)(sg->u[k] * s * UNITS_PER_STEP_F);
         ax->gen_vel = sg->u[k] * g->v;
-        ax->group_moving = g->running;
+        ax->ext_moving = g->running;
     }
 }
 
@@ -226,7 +226,7 @@ void group_tick(group_t *g, motion_axis_t *axes) {
         if (g->count == 0 || g->hold) {
             for (uint32_t k = 0; k < g->n; k++) {
                 axes[g->axis[k]].gen_vel = 0.0f;
-                axes[g->axis[k]].group_moving = false;
+                axes[g->axis[k]].ext_moving = false;
             }
             return;
         }
@@ -264,7 +264,7 @@ void group_tick(group_t *g, motion_axis_t *axes) {
         }
         set_axes(g, axes, sg, g->s, false);
         for (uint32_t k = 0; k < g->n; k++)
-            axes[g->axis[k]].group_moving = false;
+            axes[g->axis[k]].ext_moving = false;
         return;
     }
 

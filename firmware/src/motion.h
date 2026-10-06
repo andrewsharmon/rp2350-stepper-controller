@@ -29,6 +29,7 @@ typedef enum {
                     // refreshed within the jog timeout
     MODE_PVT,       // follow streamed position/velocity/time points
     MODE_GROUP,     // owned by a coordinated group (group.c drives gen_pos)
+    MODE_CAM,       // cam follower: gen_pos is a function of a leader (control.c)
 } motion_mode_t;
 
 typedef enum {
@@ -99,7 +100,7 @@ typedef struct {
 
     // Group ownership (group.c).
     int8_t group;         // -1: not in a group
-    bool group_moving;    // the group moved this axis this tick
+    bool ext_moving;      // a group or cam moved this axis this tick
 
     // Settings
     float vmax;           // full steps/s

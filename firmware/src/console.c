@@ -55,6 +55,10 @@ static const char help_text[] =
     "  gl <id> <pos...> [f<feed>]       group line: one absolute position per member\n"
     "  ga <id> <cx> <cy> <deg> [f<feed>] [t<tol>]  arc on the first two members\n"
     "  gh <id> / gr <id> / gs <id>      hold / resume / stop (stop drops the queue)\n"
+    "  cam <t> cyclic|once <x,y> <x,y> ...  cam table 1-4 (leader x -> follower y, steps)\n"
+    "  ce <ax> <t> <leader> [offset] [blend_ms]  follow cam t; leader 1-10 or v1/v2\n"
+    "  vl <k> vel <v> | move <pos> | stop | lim <vmax> <amax> | zero [pos]   virtual leader k\n"
+    "                        (s <ax> disengages a follower with a ramp down)\n"
     "  prof <ax> <name> [ms] motion profile: trap, scurve, smooth, cosine, quintic;\n"
     "                        ms = jerk time for scurve/smooth (default 30, max 100)\n"
     "  amp auto|<percent>    drive amplitude: automatic curve, or fixed\n"
@@ -90,6 +94,7 @@ static const char *mode_name(uint8_t m) {
     case MODE_JOG:      return "jog";
     case MODE_PVT:      return "pvt";
     case MODE_GROUP:    return "grp";
+    case MODE_CAM:      return "cam";
     }
     return "?";
 }
@@ -159,6 +164,12 @@ static void print_axes(void) {
             printf(" %u ms", s.jerk_ms[i]);
         if (s.pvt_depth[i])
             printf("  pvt queue %u", s.pvt_depth[i]);
+        if (s.cam_table[i] >= 0) {
+            if (s.cam_leader[i] < NUM_MOTORS)
+                printf("  cam %d <- axis %u", s.cam_table[i] + 1, s.cam_leader[i] + 1);
+            else
+                printf("  cam %d <- v%u", s.cam_table[i] + 1, s.cam_leader[i] - NUM_MOTORS + 1);
+        }
         putchar('\n');
     }
     for (int k = 0; k < GROUP_COUNT; k++) {
@@ -173,6 +184,14 @@ static void print_axes(void) {
                (double)s.group[k].v, s.group[k].queued, s.group[k].arc ? " + arc" : "",
                (unsigned long)s.group[k].segments_done);
     }
+    for (int k = 0; k < VIRTUAL_LEADERS; k++)
+        if (s.vlead[k].mode != MODE_IDLE || s.vlead[k].pos != 0)
+            printf("  v%d: %s, position %.3f, speed %.1f (limits %.0f, %.0f)\n", k + 1,
+                   mode_name(s.vlead[k].mode), steps(s.vlead[k].pos), (double)s.vlead[k].vel,
+                   (double)s.vlead[k].vmax, (double)s.vlead[k].amax);
+    if (s.cams_loaded)
+        printf("  cam tables loaded:%s%s%s%s\n", s.cams_loaded & 1 ? " 1" : "", s.cams_loaded & 2 ? " 2" : "",
+               s.cams_loaded & 4 ? " 3" : "", s.cams_loaded & 8 ? " 4" : "");
     if (s.pvt_underruns || s.pvt_dropped)
         printf("  pvt: %lu underrun(s), %lu point(s) dropped (queue full)\n",
                (unsigned long)s.pvt_underruns, (unsigned long)s.pvt_dropped);
@@ -337,6 +356,72 @@ static void run_line(char *buf) {
             break;
         }
         app_set_stress(false);
+        post(&c);
+    } else if (strcmp(cmd, "cam") == 0 && argc >= 5) {
+        long t = strtol(argv[1], NULL, 10);
+        bool cyclic = strcmp(argv[2], "cyclic") == 0;
+        if (t < 1 || t > CAM_TABLES || (!cyclic && strcmp(argv[2], "once") != 0))
+            goto usage;
+        float x[16], y[16];
+        uint32_t n = 0;
+        for (int k = 3; k < argc && n < 16; k++, n++) {
+            char *comma = strchr(argv[k], ',');
+            if (!comma)
+                goto usage;
+            *comma = '\0';
+            if (!parse_float(argv[k], &x[n]) || !parse_float(comma + 1, &y[n]))
+                goto usage;
+        }
+        const char *err = control_cam_load((uint32_t)t - 1, x, y, n, cyclic);
+        if (err)
+            printf("cam %ld not loaded: %s\n", t, err);
+    } else if (strcmp(cmd, "ce") == 0 && argc >= 4 && argc <= 6) {
+        c.axes = (uint16_t)parse_axes(argv[1]);
+        long t = strtol(argv[2], NULL, 10);
+        long l = argv[3][0] == 'v' ? NUM_MOTORS + strtol(argv[3] + 1, NULL, 10) - 1
+                                   : strtol(argv[3], NULL, 10) - 1;
+        float off = 0.0f, blend = 0.0f;
+        if (!c.axes || t < 1 || t > CAM_TABLES || l < 0 || l >= NUM_MOTORS + VIRTUAL_LEADERS ||
+            (argc >= 5 && !parse_float(argv[4], &off)) || (argc == 6 && !parse_float(argv[5], &blend)))
+            goto usage;
+        const char *err = control_cam_engage_check(c.axes, (uint32_t)t - 1, (uint32_t)l);
+        if (err) {
+            printf("not engaged: %s\n", err);
+            return;
+        }
+        c.type = CMD_CAM_ENGAGE;
+        c.ms = (uint32_t)t - 1;
+        c.n = (uint8_t)l;
+        c.pos = motion_steps_to_units(off);
+        c.f1 = blend;
+        app_set_stress(false);
+        post(&c);
+    } else if (strcmp(cmd, "vl") == 0 && argc >= 3) {
+        long k = strtol(argv[1], NULL, 10);
+        if (k < 1 || k > VIRTUAL_LEADERS)
+            goto usage;
+        c.type = CMD_VLEADER;
+        c.ms = (uint32_t)k - 1;
+        const char *op = argv[2];
+        if (strcmp(op, "vel") == 0 && argc == 4 && parse_float(argv[3], &c.f1)) {
+            c.n = VL_VELOCITY;
+        } else if (strcmp(op, "move") == 0 && argc == 4 && parse_float(argv[3], &f)) {
+            c.n = VL_MOVE;
+            c.pos = motion_steps_to_units(f);
+        } else if (strcmp(op, "stop") == 0 && argc == 3) {
+            c.n = VL_STOP;
+        } else if (strcmp(op, "lim") == 0 && argc == 5 && parse_float(argv[3], &c.f1) &&
+                   parse_float(argv[4], &c.f2)) {
+            c.n = VL_LIMITS;
+        } else if (strcmp(op, "zero") == 0 && argc <= 4) {
+            f = 0.0f;
+            if (argc == 4 && !parse_float(argv[3], &f))
+                goto usage;
+            c.n = VL_ZERO;
+            c.pos = motion_steps_to_units(f);
+        } else {
+            goto usage;
+        }
         post(&c);
     } else if (strcmp(cmd, "prof") == 0 && (argc == 3 || argc == 4)) {
         c.axes = (uint16_t)parse_axes(argv[1]);

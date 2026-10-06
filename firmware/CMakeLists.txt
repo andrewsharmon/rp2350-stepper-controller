@@ -24,6 +24,7 @@ add_executable(stepper
     src/led.c
     src/motion.c
     src/group.c
+    src/cam.c
     src/control.c
     src/console.c
     src/frame.c

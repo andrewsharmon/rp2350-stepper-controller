@@ -273,6 +273,29 @@ static bool store(uint32_t slot, const uint8_t *data, uint32_t len) {
     return ok;
 }
 
+// --- cams --------------------------------------------------------------------------
+
+static float cam_x[CAM_TABLES][CAM_MAX_POINTS], cam_y[CAM_TABLES][CAM_MAX_POINTS];
+
+static void send_cam_info(uint16_t seq) {
+    control_snapshot_t s;
+    control_snapshot(&s);
+    writer_t w = {0};
+    wr_u8(&w, s.cams_loaded);
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        wr_u8(&w, (uint8_t)s.cam_table[i]);
+        wr_u8(&w, s.cam_leader[i]);
+    }
+    for (int k = 0; k < VIRTUAL_LEADERS; k++) {
+        wr_i64(&w, s.vlead[k].pos);
+        wr_f32(&w, s.vlead[k].vel);
+        wr_f32(&w, s.vlead[k].vmax);
+        wr_f32(&w, s.vlead[k].amax);
+        wr_u8(&w, s.vlead[k].mode);
+    }
+    send(PROTO_CAM_INFO, seq, &w);
+}
+
 // --- requests -----------------------------------------------------------------------
 
 static void dispatch(uint8_t type, uint16_t seq, const uint8_t *payload, int n);
@@ -472,6 +495,47 @@ static void dispatch(uint8_t type, uint16_t seq, const uint8_t *payload, int n) 
         post_cmd = false;
         break;
     }
+    case PROTO_CAM_POINTS: {
+        uint8_t t = rd_u8(&r);
+        uint16_t off = rd_u16(&r);
+        uint8_t cnt = rd_u8(&r);
+        r.ok &= t < CAM_TABLES && off + cnt <= CAM_MAX_POINTS && r.left == cnt * 8;
+        for (int k = 0; r.ok && k < cnt; k++) {
+            cam_x[t][off + k] = rd_f32(&r);
+            cam_y[t][off + k] = rd_f32(&r);
+        }
+        post_cmd = false;
+        break;
+    }
+    case PROTO_CAM_LOAD: {
+        uint8_t t = rd_u8(&r), cyclic = rd_u8(&r);
+        uint16_t cnt = rd_u16(&r);
+        r.ok &= t < CAM_TABLES && cnt <= CAM_MAX_POINTS && r.left == 0 &&
+                control_cam_load(t, cam_x[t], cam_y[t], cnt, cyclic != 0) == NULL;
+        post_cmd = false;
+        break;
+    }
+    case PROTO_CAM_ENGAGE:
+        c.type = CMD_CAM_ENGAGE;
+        c.axes = rd_u16(&r);
+        c.ms = rd_u8(&r);
+        c.n = rd_u8(&r);
+        c.pos = rd_i64(&r);
+        c.f1 = (float)rd_u16(&r);
+        r.ok &= r.left == 0 && control_cam_engage_check(c.axes, c.ms, c.n) == NULL;
+        break;
+    case PROTO_VLEADER:
+        c.type = CMD_VLEADER;
+        c.ms = rd_u8(&r);
+        c.n = rd_u8(&r);
+        c.f1 = rd_f32(&r);
+        c.f2 = rd_f32(&r);
+        c.pos = rd_i64(&r);
+        r.ok &= c.ms < VIRTUAL_LEADERS && c.n <= VL_ZERO;
+        break;
+    case PROTO_CAM_STATUS:
+        send_cam_info(seq);
+        return;
     case PROTO_TELEMETRY: {
         uint16_t hz = rd_u16(&r);
         uint16_t axes = rd_u16(&r);
@@ -497,7 +561,8 @@ static void dispatch(uint8_t type, uint16_t seq, const uint8_t *payload, int n) 
     }
     if (c.type != CMD_LIMITS && c.type != CMD_PROFILE && c.type != CMD_SET_POS && c.type != CMD_DRIVE)
         app_set_stress(false);  // host motion takes over from the stress test
-    if (!control_is_group_cmd(c.type) && (c.axes == 0 || c.axes & ~CONTROL_ALL_AXES)) {
+    if (!control_is_group_cmd(c.type) && c.type != CMD_VLEADER &&
+        (c.axes == 0 || c.axes & ~CONTROL_ALL_AXES)) {
         ack(seq, type, PROTO_BAD_REQUEST, 0);
         return;
     }

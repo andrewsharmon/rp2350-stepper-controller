@@ -48,6 +48,20 @@ static control_snapshot_t snap_buf;
 // Core 1 state.
 static motion_axis_t axes[NUM_MOTORS];
 static config_drive_t drive[NUM_MOTORS];
+
+// Cams: tables in use on core 1, virtual leaders, and each axis's follow state.
+cam_table_t control_cam_staging[CAM_TABLES];
+static cam_table_t cams[CAM_TABLES];
+static uint8_t cams_loaded;
+static motion_axis_t vlead[VIRTUAL_LEADERS];
+typedef struct {
+    int8_t table;            // -1: not following
+    uint8_t leader;
+    int64_t offset;          // follower = f(leader) + offset
+    int64_t blend;           // engage: start difference, faded out over blend_ticks
+    uint32_t blend_tick, blend_ticks;
+} follow_t;
+static follow_t follow[NUM_MOTORS];
 static uint32_t hold_delay_ms;
 static group_t groups[GROUP_COUNT];
 static microstep_t steppers[NUM_MOTORS];
@@ -64,6 +78,12 @@ void control_init(const config_t *cfg) {
         drive[i] = a->drive;
     }
     hold_delay_ms = cfg->hold_delay_ms;
+    for (int i = 0; i < NUM_MOTORS; i++)
+        follow[i].table = -1;
+    for (int k = 0; k < VIRTUAL_LEADERS; k++) {
+        motion_init(&vlead[k], 1000.0f, 2000.0f);
+        motion_set_profile(&vlead[k], PROFILE_TRAP, 0);  // followers add no lag either
+    }
     ladder_reset(&control_ladder, time_us_32());
 }
 
@@ -76,6 +96,59 @@ uint32_t control_post(const control_cmd_t *cmd) {
         return 0;
     }
     return c.seq;
+}
+
+const char *control_cam_load(uint32_t table, const float *x, const float *y, uint32_t n, bool cyclic) {
+    static uint32_t pending_seq[CAM_TABLES];
+    if (table >= CAM_TABLES)
+        return "no such cam table";
+    control_snapshot_t s;
+    control_snapshot(&s);
+    if (pending_seq[table] && (int32_t)(s.last_seq - pending_seq[table]) < 0)
+        return "previous load of this table still pending";
+    for (int i = 0; i < NUM_MOTORS; i++)
+        if (s.cam_table[i] == (int8_t)table)
+            return "table in use (disengage its followers first)";
+    const char *err = cam_build(&control_cam_staging[table], x, y, n, cyclic);
+    if (err)
+        return err;
+    control_cmd_t c = {.type = CMD_CAM_LOAD, .ms = table};
+    pending_seq[table] = control_post(&c);
+    return pending_seq[table] ? NULL : "command queue full";
+}
+
+const char *control_cam_engage_check(uint32_t mask, uint32_t table, uint32_t leader) {
+    static char msg[200];
+    control_snapshot_t s;
+    control_snapshot(&s);
+    if (table >= CAM_TABLES || !(s.cams_loaded & (1u << table)))
+        return "cam table not loaded";
+    if (leader >= NUM_MOTORS + VIRTUAL_LEADERS)
+        return "no such leader";
+    if (leader < NUM_MOTORS && s.cam_table[leader] >= 0)
+        return "the leader is itself a follower";
+    float lv = leader < NUM_MOTORS ? s.vmax[leader] : s.vlead[leader - NUM_MOTORS].vmax;
+    float la = leader < NUM_MOTORS ? s.amax[leader] : s.vlead[leader - NUM_MOTORS].amax;
+    for (uint32_t i = 0; i < NUM_MOTORS; i++) {
+        if (!(mask & (1u << i)))
+            continue;
+        if (i == leader)
+            return "an axis can't follow itself";
+        if (s.cam_table[i] >= 0)
+            return "already a follower";
+        for (int k = 0; k < GROUP_COUNT; k++)
+            if (s.group[k].active && (s.group[k].members & (1u << i)))
+                return "the axis is in a group";
+        for (int j = 0; j < NUM_MOTORS; j++)
+            if (s.cam_table[j] >= 0 && s.cam_leader[j] == i)
+                return "the axis is leading another follower";
+        if (!(s.settled_mask & (1u << i)))
+            return "the follower must be at rest";
+        // The staging copy matches what core 1 loaded (core 0 doesn't touch it after).
+        if (cam_check(&control_cam_staging[table], lv, la, s.vmax[i], s.amax[i], msg, sizeof msg))
+            return msg;
+    }
+    return NULL;
 }
 
 void control_snapshot(control_snapshot_t *snap) {
@@ -96,6 +169,104 @@ static inline float auto_amplitude(const config_drive_t *d, float speed) {
     if (v >= d->high_speed || d->high_speed <= d->low_speed)
         return d->amp_high;
     return d->amp_low + (d->amp_high - d->amp_low) * (v - d->low_speed) / (d->high_speed - d->low_speed);
+}
+
+// --- cams -------------------------------------------------------------------
+
+static const motion_axis_t *leader_of(uint8_t l) {
+    return l < NUM_MOTORS ? &axes[l] : &vlead[l - NUM_MOTORS];
+}
+
+static bool is_leader(int i) {
+    for (int j = 0; j < NUM_MOTORS; j++)
+        if (follow[j].table >= 0 && follow[j].leader == i)
+            return true;
+    return false;
+}
+
+static bool cam_engage(int i, const control_cmd_t *c) {
+    motion_axis_t *ax = &axes[i];
+    uint8_t l = c->n;
+    if (c->ms >= CAM_TABLES || !(cams_loaded & (1u << c->ms)) || l >= NUM_MOTORS + VIRTUAL_LEADERS ||
+        l == i || !ax->settled || ax->group >= 0 || follow[i].table >= 0 || is_leader(i) ||
+        (l < NUM_MOTORS && follow[l].table >= 0))
+        return false;
+    // The speed / acceleration check (cam_check) ran on core 0 just before
+    // this command was queued: it evaluates the table hundreds of times,
+    // too slow for a 1 ms tick (two followers at once overran the core 1
+    // watchdog). Only cheap structural checks here.
+    const cam_table_t *t = &cams[c->ms];
+    const motion_axis_t *lead = leader_of(l);
+    float d1, d2;
+    int64_t target = cam_eval(t, lead->pos, &d1, &d2) + c->pos;
+    follow[i] = (follow_t){
+        .table = (int8_t)c->ms, .leader = l, .offset = c->pos,
+        .blend = ax->pos - target, .blend_tick = 0,
+        .blend_ticks = (uint32_t)(c->f1 > 0.0f ? c->f1 : 500.0f) * (MOTION_TICK_HZ / 1000u),
+    };
+    ax->gen_pos = ax->gen_last = ax->pos;
+    ax->gen_vel = ax->gen_acc = 0.0f;
+    ax->unfiltered = true;  // track the leader without the filter's lag
+    ax->mode = MODE_CAM;
+    ax->settled = false;
+    return true;
+}
+
+static void cam_disengage(int i) {
+    follow[i].table = -1;
+    motion_stop(&axes[i]);  // ramps down from the follower's current speed
+}
+
+// Set each follower's generator from its leader's (already updated) position.
+static void cam_tick(void) {
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        follow_t *f = &follow[i];
+        if (f->table < 0)
+            continue;
+        motion_axis_t *ax = &axes[i];
+        const motion_axis_t *lead = leader_of(f->leader);
+        float d1, d2;
+        int64_t pos = cam_eval(&cams[f->table], lead->pos, &d1, &d2) + f->offset;
+        bool blending = f->blend_tick < f->blend_ticks;
+        if (blending) {
+            // Fade the engage difference out with a smoothstep.
+            float s = (float)++f->blend_tick / (float)f->blend_ticks;
+            float w = 1.0f - s * s * (3.0f - 2.0f * s);
+            pos += (int64_t)((double)f->blend * w);
+        }
+        ax->ext_moving = pos != ax->gen_pos || blending || lead->vel != 0.0f;
+        ax->gen_vel = d1 * lead->vel;
+        ax->gen_pos = pos;
+    }
+}
+
+static void vleader_apply(const control_cmd_t *c) {
+    if (c->ms >= VIRTUAL_LEADERS) {
+        rejected++;
+        return;
+    }
+    motion_axis_t *v = &vlead[c->ms];
+    switch (c->n) {
+    case VL_VELOCITY: motion_set_velocity(v, c->f1); break;
+    case VL_MOVE:     motion_move_to(v, c->pos); break;
+    case VL_STOP:     motion_stop(v); break;
+    case VL_LIMITS:
+        if (c->f1 > 0.0f) v->vmax = c->f1;
+        if (c->f2 > 0.0f) v->amax = c->f2;
+        break;
+    case VL_ZERO:
+        // Moves every follower's cam position with it: only with none attached.
+        for (int i = 0; i < NUM_MOTORS; i++)
+            if (follow[i].table >= 0 && follow[i].leader == NUM_MOTORS + c->ms) {
+                rejected++;
+                return;
+            }
+        if (!motion_set_position(v, c->pos))
+            rejected++;
+        break;
+    default:
+        rejected++;
+    }
 }
 
 // Group commands address a group, not axes. Returns true if handled.
@@ -149,10 +320,41 @@ static void apply(const control_cmd_t *c) {
     last_seq = c->seq;
     if (apply_group(c))
         return;
+    if (c->type == CMD_VLEADER) {
+        vleader_apply(c);
+        return;
+    }
+    if (c->type == CMD_CAM_LOAD) {
+        bool in_use = false;
+        for (int i = 0; i < NUM_MOTORS; i++)
+            in_use |= follow[i].table == (int8_t)c->ms;
+        if (c->ms >= CAM_TABLES || in_use) {
+            rejected++;
+        } else {
+            cams[c->ms] = control_cam_staging[c->ms];
+            cams_loaded |= (uint8_t)(1u << c->ms);
+        }
+        return;
+    }
     for (int i = 0; i < NUM_MOTORS; i++) {
         if (!(c->axes & (1u << i)))
             continue;
         motion_axis_t *ax = &axes[i];
+        if (follow[i].table >= 0 && c->type != CMD_LIMITS && c->type != CMD_PROFILE &&
+            c->type != CMD_DRIVE) {
+            // A follower belongs to its cam: stop disengages it (with a
+            // ramp down), other motion commands are refused.
+            if (c->type == CMD_STOP)
+                cam_disengage(i);
+            else
+                rejected++;
+            continue;
+        }
+        if (c->type == CMD_CAM_ENGAGE) {
+            if (!cam_engage(i, c))
+                rejected++;
+            continue;
+        }
         if (ax->group >= 0 && c->type != CMD_LIMITS && c->type != CMD_PROFILE && c->type != CMD_DRIVE) {
             // A grouped axis belongs to its group: stop stops the group,
             // other motion commands are refused.
@@ -211,8 +413,12 @@ static void apply(const control_cmd_t *c) {
 
 // Halt every axis where it is (outputs are already off).
 static void halt_all(void) {
-    for (int i = 0; i < NUM_MOTORS; i++)
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        follow[i].table = -1;
         motion_halt(&axes[i]);
+    }
+    for (int k = 0; k < VIRTUAL_LEADERS; k++)
+        motion_halt(&vlead[k]);
     for (int k = 0; k < GROUP_COUNT; k++)
         group_halt(&groups[k], axes);
 }
@@ -261,6 +467,18 @@ static void publish(uint32_t tick, const float *amp, uint32_t hold) {
             settled |= 1u << i;
     }
     snap_buf.settled_mask = settled;
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        snap_buf.cam_table[i] = follow[i].table;
+        snap_buf.cam_leader[i] = follow[i].leader;
+    }
+    snap_buf.cams_loaded = cams_loaded;
+    for (int k = 0; k < VIRTUAL_LEADERS; k++) {
+        snap_buf.vlead[k].pos = vlead[k].pos;
+        snap_buf.vlead[k].vel = vlead[k].vel;
+        snap_buf.vlead[k].vmax = vlead[k].vmax;
+        snap_buf.vlead[k].amax = vlead[k].amax;
+        snap_buf.vlead[k].mode = (uint8_t)vlead[k].mode;
+    }
     for (int k = 0; k < GROUP_COUNT; k++) {
         const group_t *g = &groups[k];
         uint16_t members = 0;
@@ -336,7 +554,7 @@ void __time_critical_func(control_core1_main)(void) {
             // are dropped (the axes are halted).
             while (queue_try_remove(&cmd_queue, &cmd))
                 if (cmd.type == CMD_SET_POS || cmd.type == CMD_LIMITS || cmd.type == CMD_PROFILE ||
-                    cmd.type == CMD_DRIVE ||
+                    cmd.type == CMD_DRIVE || cmd.type == CMD_CAM_LOAD ||
                     cmd.type == CMD_GROUP_CREATE || cmd.type == CMD_GROUP_RELEASE)
                     apply(&cmd);
             for (int i = 0; i < NUM_MOTORS; i++)
@@ -366,12 +584,25 @@ void __time_critical_func(control_core1_main)(void) {
                 while (queue_try_remove(&cmd_queue, &cmd))
                     apply(&cmd);
                 hold = 0;
+                // Order matters: leaders (virtual, then real axes and
+                // groups) move first, then cam followers read their new
+                // positions in the same tick.
+                int64_t before[NUM_MOTORS];
+                for (int i = 0; i < NUM_MOTORS; i++)
+                    before[i] = axes[i].pos;
+                for (int k = 0; k < VIRTUAL_LEADERS; k++)
+                    motion_tick(&vlead[k]);
                 for (int k = 0; k < GROUP_COUNT; k++)
                     group_tick(&groups[k], axes);
+                for (int i = 0; i < NUM_MOTORS; i++)
+                    if (follow[i].table < 0)
+                        motion_tick(&axes[i]);
+                cam_tick();
+                for (int i = 0; i < NUM_MOTORS; i++)
+                    if (follow[i].table >= 0)
+                        motion_tick(&axes[i]);
                 for (int i = 0; i < NUM_MOTORS; i++) {
-                    int64_t before = axes[i].pos;
-                    motion_tick(&axes[i]);
-                    int64_t delta = axes[i].pos - before;
+                    int64_t delta = axes[i].pos - before[i];
                     // One tick can exceed 2^31 units above ~2000 steps/s,
                     // so split in 64 bits; per period it fits 32.
                     int64_t q = delta / (int64_t)PERIODS_PER_TICK;

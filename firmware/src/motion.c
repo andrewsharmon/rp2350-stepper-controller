@@ -187,7 +187,7 @@ void motion_halt(motion_axis_t *ax) {
     ax->gen_pos = ax->gen_last = ax->target = ax->pos;
     ax->vel = ax->gen_vel = ax->gen_acc = 0.0f;
     ax->mode = ax->group >= 0 ? MODE_GROUP : MODE_IDLE;  // stays in its group
-    ax->group_moving = false;
+    ax->ext_moving = false;
     ax->seg_active = false;
     ax->settled = true;
     ax->unfiltered = false;
@@ -372,7 +372,8 @@ static bool generate(motion_axis_t *ax) {
         break;
 
     case MODE_GROUP:
-        return ax->group_moving;  // group_tick already set gen_pos / gen_vel
+    case MODE_CAM:
+        return ax->ext_moving;  // the group / cam already set gen_pos and gen_vel
 
     case MODE_PVT: {
         if (++ax->pvt_tick >= ax->pvt_ticks) {
@@ -442,9 +443,13 @@ void motion_tick(motion_axis_t *ax) {
 
     ax->pos += delta;
     ax->vel = (float)delta * STEPS_PER_UNIT_F * (float)MOTION_TICK_HZ;
-    ax->settled = !moving && flushed && (ax->mode == MODE_IDLE || ax->mode == MODE_GROUP);
+    ax->settled = !moving && flushed &&
+                  (ax->mode == MODE_IDLE || ax->mode == MODE_GROUP || ax->mode == MODE_CAM);
     if (ax->settled) {
         ax->vel = 0.0f;
-        ax->unfiltered = false;
+        // A cam follower stays unfiltered while engaged, even when its
+        // leader is at rest; otherwise the filter's lag would return.
+        if (ax->mode == MODE_IDLE)
+            ax->unfiltered = false;
     }
 }

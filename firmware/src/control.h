@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "cam.h"
 #include "config.h"
 #include "group.h"
 #include "ladder.h"
@@ -17,6 +18,8 @@
 #endif
 
 #define CONTROL_ALL_AXES ((1u << NUM_MOTORS) - 1)
+#define CAM_TABLES       4
+#define VIRTUAL_LEADERS  2   // leader ids NUM_MOTORS.. are virtual leaders
 
 
 // Group commands are the contiguous range CMD_GROUP_CREATE..CMD_GROUP_STOP;
@@ -39,7 +42,14 @@ typedef enum {
     CMD_GROUP_HOLD,    // ms: group id, f1: 1 hold / 0 resume
     CMD_GROUP_STOP,    // ms: group id: decelerate along the path, drop the queue
     CMD_DRIVE,         // drive: amplitude curve and wiring flags
+    CMD_CAM_LOAD,      // ms: table id: copy control_cam_staging[id] in (unused tables only)
+    CMD_CAM_ENGAGE,    // axes: followers, ms: table, n: leader (axis 0-9 or virtual
+                       //   NUM_MOTORS + k), pos: follower offset (units), f1: blend ms
+    CMD_VLEADER,       // ms: virtual leader, n: op (VL_*), f1/f2/pos: arguments
 } control_cmd_type_t;
+
+// Virtual leader operations (CMD_VLEADER n).
+enum { VL_VELOCITY, VL_MOVE, VL_STOP, VL_LIMITS, VL_ZERO };
 
 static inline bool control_is_group_cmd(int type) {
     return type >= CMD_GROUP_CREATE && type <= CMD_GROUP_STOP;
@@ -75,6 +85,14 @@ typedef struct {
     uint16_t pvt_underrun[NUM_MOTORS];
     config_drive_t drive[NUM_MOTORS];
     uint32_t last_seq;             // sequence number of the last applied command
+    int8_t cam_table[NUM_MOTORS];  // table followed, -1: not a follower
+    uint8_t cam_leader[NUM_MOTORS];
+    uint8_t cams_loaded;           // bit mask of tables loaded on core 1
+    struct {
+        int64_t pos;
+        float vel, vmax, amax;
+        uint8_t mode;
+    } vlead[VIRTUAL_LEADERS];
     struct {
         bool active, running, hold, arc;
         uint16_t members;          // axis mask
@@ -97,6 +115,9 @@ extern volatile uint32_t control_heartbeat;
 extern volatile uint32_t control_busy_us;   // reset by the reader
 extern volatile uint32_t control_min_queued;
 extern ladder_t control_ladder;             // owned by core 1, read by core 0
+// Core 0 builds cam tables here, then posts CMD_CAM_LOAD; it must not touch
+// a staging table again until that command has been applied.
+extern cam_table_t control_cam_staging[CAM_TABLES];
 
 // Call on core 0 after the motors are initialized, before launching core 1.
 // Limits, profiles and drive settings come from the configuration.
@@ -109,3 +130,13 @@ uint32_t control_post(const control_cmd_t *cmd);
 
 // Consistent copy of the latest tick's state.
 void control_snapshot(control_snapshot_t *snap);
+
+// Core 0: build a cam table and queue it for core 1. Returns NULL, or why
+// it can't (bad points, the table is in use, a previous load still pending).
+const char *control_cam_load(uint32_t table, const float *x, const float *y, uint32_t n, bool cyclic);
+
+// Core 0: why engaging followers `axes` on `table` behind `leader` would be
+// refused, or NULL. Call it before posting CMD_CAM_ENGAGE: this is where
+// the cam is checked against the axes' limits (too slow for core 1's tick);
+// core 1 only re-checks the cheap structural conditions.
+const char *control_cam_engage_check(uint32_t axes, uint32_t table, uint32_t leader);

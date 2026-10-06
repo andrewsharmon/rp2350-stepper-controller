@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -20,6 +20,7 @@
 #include "config.h"
 #include "show.h"
 #include "standalone.h"
+#include "cam.h"
 #include "trig.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
@@ -530,6 +531,90 @@ static void test_standalone(void) {
           "buttons with no shows stored");
 }
 
+static void test_cam(void) {
+    static cam_table_t t;
+    float x[17], y[17], d1, d2;
+    // Cyclic sine: period 400 steps of leader, amplitude 100 steps.
+    for (int i = 0; i <= 16; i++) {
+        x[i] = 25.0f * i;
+        y[i] = 100.0f * sinf(2.0f * (float)M_PI * x[i] / 400.0f);
+    }
+    CHECK(cam_build(&t, x, y, 17, true) == NULL, "sine cam refused");
+    double worst = 0;
+    for (int k = -4000; k <= 4000; k++) {   // leader from -10 to +10 periods
+        double xl = k * 1.0;
+        int64_t f = cam_eval(&t, motion_steps_to_units((float)xl), &d1, &d2);
+        double e = fabs(motion_units_to_steps(f) - 100.0 * sin(2.0 * M_PI * xl / 400.0));
+        if (e > worst) worst = e;
+    }
+    // Catmull-Rom through 16 points per cycle: error ~ 0.2% of amplitude.
+    CHECK(worst < 0.25, "sine cam error %f steps", worst);
+    for (int i = 0; i <= 16; i++) {
+        int64_t f = cam_eval(&t, motion_steps_to_units(x[i] + 400.0f * 3), &d1, &d2);
+        // Exact to float evaluation (~1e-5 steps at this amplitude).
+        CHECK(fabs(motion_units_to_steps(f - motion_steps_to_units(y[i]))) < 1e-4, "point %d off", i);
+    }
+    // Seam: value and slope match just either side of a period boundary.
+    float da, db, dd;
+    int64_t below = cam_eval(&t, motion_steps_to_units(400) - 1000, &da, &dd);
+    int64_t above = cam_eval(&t, motion_steps_to_units(400) + 1000, &db, &dd);
+    CHECK(llabs(above - below) < 100000 && fabsf(da - db) < 1e-3f, "seam: %lld, slopes %f %f",
+          (long long)(above - below), da, db);
+
+    // Forward and reverse: the same leader position gives the same follower
+    // position, and the speed relation reverses sign with the leader.
+    int64_t fwd[200];
+    for (int k = 0; k < 200; k++)
+        fwd[k] = cam_eval(&t, motion_steps_to_units(-750.0f + 7.3f * k), &d1, &d2);
+    for (int k = 199; k >= 0; k--)
+        CHECK(cam_eval(&t, motion_steps_to_units(-750.0f + 7.3f * k), &d1, &d2) == fwd[k], "reverse %d", k);
+
+    // Net rise: +50 steps per cycle, exact over many cycles both ways.
+    float xr[3] = {0, 100, 200}, yr[3] = {0, 40, 50};
+    CHECK(cam_build(&t, xr, yr, 3, true) == NULL, "rise cam refused");
+    int64_t p = motion_steps_to_units(200);
+    CHECK(cam_eval(&t, 3 * p, &d1, &d2) == motion_steps_to_units(150), "3 cycles");
+    CHECK(cam_eval(&t, -2 * p, &d1, &d2) == motion_steps_to_units(-100), "-2 cycles");
+    CHECK(cam_eval(&t, 1000000 * p, &d1, &d2) == 1000000 * motion_steps_to_units(50), "1e6 cycles");
+    CHECK(cam_eval(&t, -1000000 * p + motion_steps_to_units(100), &d1, &d2) ==
+          -1000000 * motion_steps_to_units(50) + motion_steps_to_units(40), "-1e6 cycles + 100");
+
+    // One-shot: holds the end values outside the range.
+    CHECK(cam_build(&t, xr, yr, 3, false) == NULL, "one-shot refused");
+    CHECK(cam_eval(&t, motion_steps_to_units(-50), &d1, &d2) == 0 && d1 == 0.0f, "below range");
+    CHECK(cam_eval(&t, motion_steps_to_units(500), &d1, &d2) == motion_steps_to_units(50), "above range");
+
+    // Limits: the sine cam's peak slope is 100 * 2pi/400 = 1.57 and peak
+    // curvature 100 (2pi/400)^2 = 0.025. Leader at 200 steps/s, 200 steps/s^2:
+    // the follower needs ~314 steps/s and ~1300 steps/s^2. At 1000 steps/s
+    // it would need ~1570 steps/s and ~25000 steps/s^2.
+    for (int i = 0; i <= 16; i++) { x[i] = 25.0f * i; y[i] = 100.0f * sinf(2.0f * (float)M_PI * x[i] / 400.0f); }
+    cam_build(&t, x, y, 17, true);
+    char msg[200];
+    CHECK(cam_check(&t, 200, 200, 1500, 2000, msg, sizeof msg) == NULL, "slow leader refused: %s", msg);
+    CHECK(cam_check(&t, 1000, 1000, 1500, 2000, msg, sizeof msg) != NULL, "fast leader accepted");
+
+    // A follower that settles while engaged stays unfiltered (no added lag).
+    motion_axis_t fol;
+    motion_init(&fol, 1500, 2000);   // s-curve profile
+    fol.mode = MODE_CAM;
+    fol.unfiltered = true;
+    for (int k = 0; k < 100; k++) {  // leader at rest: the follower settles
+        fol.ext_moving = false;
+        motion_tick(&fol);
+    }
+    CHECK(fol.settled && fol.unfiltered, "engaged follower lost unfiltered when settled");
+    fol.gen_pos += motion_steps_to_units(1);  // leader moves: follows in the same tick
+    fol.ext_moving = true;
+    motion_tick(&fol);
+    CHECK(fol.pos == motion_steps_to_units(1), "follower lagged its leader");
+
+    // Bad tables.
+    float bx[3] = {0, 10, 10};
+    CHECK(cam_build(&t, bx, yr, 3, true) != NULL, "repeated x accepted");
+    CHECK(cam_build(&t, xr, yr, 1, true) != NULL, "single point accepted");
+}
+
 static void test_trig(void) {
     double worst = 0, worst_d = 0;
     for (int k = -20000; k <= 20000; k++) {
@@ -916,6 +1001,7 @@ int main(void) {
     test_config();
     test_show();
     test_standalone();
+    test_cam();
     test_trig();
     test_motion();
     test_pvt();

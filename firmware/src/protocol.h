@@ -48,6 +48,14 @@
 //   0x54 SHOW_STOP                       -
 //   0x55 SHOW_LIST                       -                   -> SHOW_INFO
 //   0x56 SHOW_ERASE                      slot u8
+//   0x60 CAM_POINTS                      table u8 (0-3), offset u16, n u8, (x f32, y f32) x n
+//   0x61 CAM_LOAD                        table u8, cyclic u8, n u16: build from the uploaded
+//                                        points and load (BAD_REQUEST if invalid / in use)
+//   0x62 CAM_ENGAGE                      axes u16, table u8, leader u8 (0-9 axis, 10-11 virtual),
+//                                        offset i64, blend_ms u16  (BAD_REQUEST if refused)
+//   0x63 VLEADER                         id u8, op u8 (0 vel, 1 move, 2 stop, 3 limits, 4 zero),
+//                                        a f32 (vel / vmax), b f32 (amax), pos i64 (move / zero)
+//   0x64 CAM_STATUS                      -                   -> CAM_INFO
 //
 // Device -> host
 //   0x80 ACK        req_type u8, result u8 (PROTO_OK...), cmd_seq u32
@@ -65,6 +73,8 @@
 //                             pos i64, vel f32, mode u8, amp_pct u8, pvt_queue u8
 //   0x83 SHOW_INFO  playing u8 (slot, 0xff none), then per slot (4): valid u8,
 //                   name char[16], duration_ms u32, loop u8, n_tracks u8
+//   0x84 CAM_INFO   loaded u8 (table mask), per axis: table i8 (-1 none), leader u8,
+//                   per virtual leader (2): pos i64, vel f32, vmax f32, amax f32, mode u8
 //   0x91 EVENT      tick u32, kind u8 (PROTO_EV_...), axis u8 (1-based, 0 = none), pos i64
 //
 // Telemetry field bits: TF_POS 1, TF_VEL 2, TF_MODE 4, TF_AMP 8, TF_Q 16.
@@ -88,7 +98,8 @@ enum {
     PROTO_TELEMETRY = 0x40,
     PROTO_SHOW_BEGIN = 0x50, PROTO_SHOW_DATA, PROTO_SHOW_END, PROTO_SHOW_RUN, PROTO_SHOW_STOP,
     PROTO_SHOW_LIST, PROTO_SHOW_ERASE,
-    PROTO_ACK = 0x80, PROTO_PONG, PROTO_STATUS, PROTO_SHOW_INFO,
+    PROTO_CAM_POINTS = 0x60, PROTO_CAM_LOAD, PROTO_CAM_ENGAGE, PROTO_VLEADER, PROTO_CAM_STATUS,
+    PROTO_ACK = 0x80, PROTO_PONG, PROTO_STATUS, PROTO_SHOW_INFO, PROTO_CAM_INFO,
     PROTO_TELEM = 0x90, PROTO_EVENT,
 };
 

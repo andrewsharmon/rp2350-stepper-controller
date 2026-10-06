@@ -21,13 +21,16 @@ AMPLITUDE, CLEAR_STOP, CONFIG_SAVE, DRIVE, BOOT_SHOW = 0x30, 0x31, 0x32, 0x33, 0
 TELEMETRY = 0x40
 SHOW_BEGIN, SHOW_DATA, SHOW_END, SHOW_RUN, SHOW_STOP, SHOW_LIST, SHOW_ERASE = range(0x50, 0x57)
 SHOW_INFO = 0x83
+CAM_POINTS, CAM_LOAD, CAM_ENGAGE, VLEADER, CAM_STATUS = range(0x60, 0x65)
+CAM_INFO = 0x84
+VL_OPS = {"vel": 0, "move": 1, "stop": 2, "limits": 3, "zero": 4}
 # Device -> host
 ACK, PONG, STATUS = 0x80, 0x81, 0x82
 TELEM, EVENT = 0x90, 0x91
 
 RESULTS = {0: "ok", 1: "queue full", 2: "bad request", 3: "unknown"}
 EVENTS = {1: "done", 2: "underrun", 3: "estop", 4: "fault", 5: "clear"}
-MODES = ["idle", "pos", "vel", "jog", "pvt", "grp"]
+MODES = ["idle", "pos", "vel", "jog", "pvt", "grp", "cam"]
 PROFILES = ["trap", "scurve", "smooth", "cosine", "quintic"]
 
 # Telemetry field bits.
@@ -316,6 +319,23 @@ def parse_show_info(p, slots=4):
         out["slots"].append({"valid": bool(valid), "name": name.rstrip(b"\0").decode(errors="replace"),
                              "duration_ms": duration, "loop": bool(loop), "tracks": n_tracks} if valid else None)
     return out
+
+
+def parse_cam_info(p, n_axes, n_leaders=2):
+    loaded = p[0]
+    off = 1
+    axes = []
+    for _ in range(n_axes):
+        table, leader = struct.unpack_from("<bB", p, off)
+        off += 2
+        axes.append(None if table < 0 else {"table": table, "leader": leader})
+    leaders = []
+    for _ in range(n_leaders):
+        pos, vel, vmax, amax, mode = struct.unpack_from("<qfffB", p, off)
+        off += 21
+        leaders.append({"pos": to_steps(pos), "vel": vel, "vmax": vmax, "amax": amax,
+                        "mode": MODES[mode] if mode < len(MODES) else "?"})
+    return {"loaded": [k for k in range(4) if loaded >> k & 1], "followers": axes, "leaders": leaders}
 
 
 def parse_event(p):

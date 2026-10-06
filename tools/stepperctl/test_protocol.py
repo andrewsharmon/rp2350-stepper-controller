@@ -56,6 +56,17 @@ class MessageTests(unittest.TestCase):
         self.assertEqual(len(P.req_telemetry(100, 3, 1, 0, True)), 7)
         self.assertEqual(len(P.req_drive(1, 0.4, 0.6, 0.25, 300, 1600, True)), 2 + 5 * 4 + 1)
 
+    def test_cam_info_layout(self):
+        n = 10
+        body = bytes([0b0101]) + b"".join(struct.pack("<bB", -1 if i % 2 else 0, 10) for i in range(n))
+        body += b"".join(struct.pack("<qfffB", 3 << 30, 2.5, 150.0, 150.0, 2) for _ in range(2))
+        info = P.parse_cam_info(body, n)
+        self.assertEqual(info["loaded"], [0, 2])
+        self.assertEqual(info["followers"][0], {"table": 0, "leader": 10})
+        self.assertIsNone(info["followers"][1])
+        self.assertEqual(info["leaders"][1]["pos"], 3.0)
+        self.assertEqual(info["leaders"][0]["mode"], "vel")
+
     def test_units(self):
         self.assertEqual(P.to_units(1.0), 1 << 30)
         self.assertEqual(P.to_units(-12.5), -(25 << 29))

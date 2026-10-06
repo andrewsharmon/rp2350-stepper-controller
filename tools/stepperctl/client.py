@@ -254,6 +254,50 @@ class Client:
         """Write limits, profiles and drive settings to flash (axes at rest)."""
         return self.command(P.CONFIG_SAVE)
 
+    # --- cams (tables 0-3; leaders: axis number 1-10 or "v1"/"v2") ---------------------
+
+    def _leader(self, leader):
+        if isinstance(leader, str) and leader.startswith("v"):
+            return self.n_axes + int(leader[1:]) - 1
+        return int(leader) - 1
+
+    def cam_load(self, table, points, cyclic=True):
+        """points: [(leader x, follower y), ...] in full steps, x increasing."""
+        for off in range(0, len(points), 28):
+            chunk = points[off:off + 28]
+            self.command(P.CAM_POINTS, struct.pack("<BHB", table, off, len(chunk)) +
+                         b"".join(struct.pack("<ff", x, y) for x, y in chunk))
+        return self.command(P.CAM_LOAD, struct.pack("<BBH", table, 1 if cyclic else 0, len(points)))
+
+    def cam_engage(self, axes, table, leader, offset=0.0, blend_ms=500):
+        """Make `axes` follow cam `table` behind `leader`. Refused (CommandError)
+        if a follower is moving, grouped, or couldn't keep up with the leader
+        at the leader's speed / acceleration limits."""
+        return self.command(P.CAM_ENGAGE, struct.pack("<HBBqH", self._mask(axes), table,
+                                                      self._leader(leader), P.to_units(offset), blend_ms))
+
+    def _vleader(self, k, op, a=0.0, b=0.0, pos=0.0):
+        return self.command(P.VLEADER, struct.pack("<BBffq", k, P.VL_OPS[op], a, b, P.to_units(pos)))
+
+    def vleader_velocity(self, k, vel):
+        return self._vleader(k, "vel", vel)
+
+    def vleader_move(self, k, pos):
+        return self._vleader(k, "move", pos=pos)
+
+    def vleader_stop(self, k):
+        return self._vleader(k, "stop")
+
+    def vleader_limits(self, k, vmax=0.0, amax=0.0):
+        return self._vleader(k, "limits", vmax, amax)
+
+    def vleader_zero(self, k, pos=0.0):
+        return self._vleader(k, "zero", pos=pos)
+
+    def cam_status(self):
+        rtype, p = self.request(P.CAM_STATUS, retries=self.retries)
+        return P.parse_cam_info(p, self.n_axes)
+
     # --- shows (slots 0-3) --------------------------------------------------------
 
     def show_upload(self, slot, blob, chunk=200):

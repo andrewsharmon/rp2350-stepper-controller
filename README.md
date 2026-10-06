@@ -35,6 +35,7 @@ What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
 - **Configuration in flash:** per-axis limits, motion profile, automatic amplitude curve (run low/high, hold, corner speeds) and wiring fixes (reverse direction, swap coils) survive power cycles. Two sectors are written alternately with a generation counter and CRC, so an interrupted save keeps the previous configuration.
 - **Streamed PVT:** the host sends position/velocity/time points, and each axis follows a cubic through them. A 10-axis wave streamed at 20 ms per point tracked the ideal curve within 0.0005 steps. Running out of points while moving brakes safely.
 - **Telemetry:** up to 1 kHz with selectable axes and fields (position, speed, mode, amplitude, PVT queue, plus motor voltage, ladder, stop state and the last applied command). Each line is numbered so a host can detect drops. Event lines report finished moves, PVT underruns and stops. At 1 kHz with every field on 10 axes, no lines were dropped and core 0 was 39% busy.
+- **Electronic cams:** an axis can follow a cam table, so its position is a function of a leader's position: another axis, or one of two virtual leaders with their own speed ramps. Because it's position-based, followers retrace exactly when the leader reverses, at any speed. Cyclic tables can carry a net rise per cycle. Engaging blends in smoothly, and is refused if the follower couldn't keep up at the leader's limits. On the Pico 2, followers matched an independent evaluation of the cam within 0.0013 steps through forward and reverse runs. Tables are held in RAM, so reload them after a reboot.
 - **Motion profiles per axis:** `trap`, `scurve` (the default: jerk-limited by a moving average, Tj = 30 ms), `smooth` (two moving averages), `cosine` and `quintic`. Every profile lands exactly on its target within the speed and acceleration limits, and moves can be redirected mid-move without jumps.
 - **Safety:** an e-stop or driver fault on the analog ladder cuts all outputs in about 30 µs. A watchdog on core 0 drops outputs to coast if core 1 stalls.
 - **Status LEDs:** a WS2812 chain shows overall status plus each axis's speed and direction.
@@ -44,6 +45,7 @@ What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
 ```
 tools/stepperctl/    host library + command line (binary protocol)
 tools/shows/         example shows (JSON; format in tools/stepperctl/show.py)
+tools/cams/          example cam tables (JSON: {"cyclic": true, "points": [[x, y], ...]})
 tools/pvt_demo.py    host demo: streams a PVT wave over USB serial
 firmware/            Pico SDK (C) firmware
   src/               motor PWM (PIO/DMA), microstepping, ADC monitor, ladder, LEDs
@@ -83,8 +85,10 @@ Host tests (no hardware needed):
 
 ```bash
 cd firmware/test
-cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c \
-   ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c -lm -o test_host && ./test_host
+cc -std=c11 -O1 -Wall -Wextra -DCONFIG_HOST_TEST -I../src test_host.c ../src/hbridge_encode.c \
+   ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c \
+   ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c \
+   -lm -o test_host && ./test_host
 ```
 
 ## Pico 2 bench setup
@@ -108,6 +112,9 @@ mr * -100        move every axis back 100 steps
 j 3 400          jog axis 3 at 400 steps/s (stops unless repeated within 300 ms)
 lim 1 1200 4000  axis 1 limits: 1200 steps/s, 4000 steps/s^2
 prof * quintic   minimum-jerk moves on every axis (axes must be at rest)
+cam 1 cyclic 0,0 100,40 200,50   cam table 1 (leader x, follower y); +50 per 200-step cycle
+vl 1 lim 150 150 virtual leader 1 limits; ce 3 1 v1 makes axis 3 follow cam 1 behind it
+vl 1 vel 100     run the virtual leader (negative reverses; followers retrace)
 g 1 1,2 800      group 1 = axes 1 and 2, path speed 800 steps/s
 gl 1 400 400     group line to (400, 400); ga 1 -300 0 360: full circle around (-300, 0)
 p 2 150 300 20   PVT point: axis 2 reaches 150 steps at 300 steps/s, 20 ms after the last
@@ -139,6 +146,8 @@ python3 tools/stepperctl telem --hz 200 --axes 1,2 --seconds 5 > log.csv
 python3 tools/stepperctl show upload tools/shows/wave.json --slot 2
 python3 tools/stepperctl show run 2          # show list / show stop
 python3 tools/stepperctl boot 2 && python3 tools/stepperctl save   # run show 2 at power-up
+python3 tools/stepperctl cam load 1 tools/cams/rise_dwell.json
+python3 tools/stepperctl cam engage 3 1 v1 && python3 tools/stepperctl vl 1 vel 100
 ```
 
 ```python

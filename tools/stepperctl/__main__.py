@@ -19,6 +19,12 @@
   python3 tools/stepperctl show upload tools/shows/wave.json --slot 1
   python3 tools/stepperctl show list|run 1|stop|erase 1
   python3 tools/stepperctl boot 2|off && python3 tools/stepperctl save   # standalone boot show
+  python3 tools/stepperctl cam load 1 tools/cams/sine.json
+  python3 tools/stepperctl cam engage 3 1 v1 [--offset 0] [--blend-ms 500]   # axis 3 follows v1
+  python3 tools/stepperctl vl 1 limits 150 150 / vel 100 / move 400 / stop / zero
+  python3 tools/stepperctl cam status            # (stop <axis> disengages a follower)
+
+Cam and virtual leader ids are 1-based here (cam tables 1-4, leaders v1/v2).
   python3 tools/stepperctl telem --hz 100 --seconds 5 --fields pos,vel --axes 1,2 > log.csv
 
 Group ids are 1-4 here (0-3 on the wire).
@@ -81,6 +87,9 @@ def main():
     sub.add_parser("clear")
     sub.add_parser("save")
     p = sub.add_parser("boot"); p.add_argument("slot")
+    p = sub.add_parser("cam"); p.add_argument("action"); p.add_argument("args", nargs="*")
+    p.add_argument("--offset", type=float, default=0.0); p.add_argument("--blend-ms", type=int, default=500)
+    p = sub.add_parser("vl"); p.add_argument("id", type=int); p.add_argument("op"); p.add_argument("values", nargs="*", type=float)
     p = sub.add_parser("show"); p.add_argument("action"); p.add_argument("arg", nargs="?")
     p.add_argument("--slot", type=int, default=1)
     p = sub.add_parser("drive"); p.add_argument("axes")
@@ -162,6 +171,41 @@ def run(c, a):
             c.show_erase(int(a.arg) - 1)
         else:
             sys.exit(f"unknown show action {a.action}")
+    elif a.cmd == "cam":
+        if a.action == "load":
+            import json
+            with open(a.args[1]) as f:
+                spec = json.load(f)
+            c.cam_load(int(a.args[0]) - 1, [tuple(p) for p in spec["points"]], spec.get("cyclic", True))
+            print(f"cam {a.args[0]}: {len(spec['points'])} points, {'cyclic' if spec.get('cyclic', True) else 'once'}")
+        elif a.action == "engage":
+            c.cam_engage(parse_axes(a.args[0]), int(a.args[1]) - 1, a.args[2], a.offset, a.blend_ms)
+        elif a.action == "status":
+            st = c.cam_status()
+            print("loaded tables:", ", ".join(str(t + 1) for t in st["loaded"]) or "none")
+            for i, f in enumerate(st["followers"]):
+                if f:
+                    lead = f"axis {f['leader'] + 1}" if f["leader"] < c.n_axes else f"v{f['leader'] - c.n_axes + 1}"
+                    print(f"  axis {i + 1} follows cam {f['table'] + 1} behind {lead}")
+            for k, l in enumerate(st["leaders"]):
+                print(f"  v{k + 1}: {l['mode']}, position {l['pos']:.3f}, speed {l['vel']:.1f} "
+                      f"(limits {l['vmax']:.0f}, {l['amax']:.0f})")
+        else:
+            sys.exit(f"unknown cam action {a.action}")
+    elif a.cmd == "vl":
+        k, v = a.id - 1, a.values
+        if a.op == "vel":
+            c.vleader_velocity(k, v[0])
+        elif a.op == "move":
+            c.vleader_move(k, v[0])
+        elif a.op == "stop":
+            c.vleader_stop(k)
+        elif a.op == "limits":
+            c.vleader_limits(k, v[0], v[1] if len(v) > 1 else 0.0)
+        elif a.op == "zero":
+            c.vleader_zero(k, v[0] if v else 0.0)
+        else:
+            sys.exit(f"unknown vl op {a.op}")
     elif a.cmd == "boot":
         c.boot_show(None if a.slot == "off" else int(a.slot) - 1)
     elif a.cmd == "save":
