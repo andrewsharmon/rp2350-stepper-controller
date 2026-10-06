@@ -22,11 +22,11 @@ JP_BRIDGED = "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm"
 JP_OPEN = "Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm"
 # Hirose DF40, 0.4 mm pitch, 40 pins, 2.0 mm stack: header on the underside of
 # the upper board mates the socket on top of the lower board. The four corner
-# contacts (pins 1, 2, 39, 40) are metal fittings per Hirose: tied to GND, but
-# not counted on for current.
+# contacts (pins 1, 2, 39, 40) are metal fittings per Hirose (soldered for
+# strength, not for signal or power), so they are left unconnected.
 BTB_HEADER = ("stack:Hirose_DF40C-40DP_Header", "DF40C-40DP-0.4V(51)", "C424643")
 BTB_SOCKET = ("stack:Hirose_DF40C-2.0-40DS_Socket", "DF40C(2.0)-40DS-0.4V(51)", "C597934")
-BTB_FIT = ["GND", "GND"]  # one corner pair (both rows) at each end
+BTB_FIT = [None, None]  # one corner pair (both rows) at each end: no connect
 TP = "TestPoint:TestPoint_Pad_D1.0mm"
 
 MOTORS = 10
@@ -73,7 +73,7 @@ def add_btb(sch, ref, nets, part, note):
     fp, mpn, lcsc = part
     value = "BTB 40P " + ("header" if part is BTB_HEADER else "socket")
     sch.add("Connector_Generic:Conn_02x20_Odd_Even", "J", value, fp,
-            {str(i + 1): n for i, n in enumerate(nets)}, ref=ref, MPN=mpn, LCSC=lcsc, Note=note)
+            {str(i + 1): n for i, n in enumerate(nets) if n}, ref=ref, MPN=mpn, LCSC=lcsc, Note=note)
 
 
 def R(sch, value, a, b, fp=R0402, **kw):
@@ -183,11 +183,13 @@ def controller():
     # Analog ladder: e-stop load lives on tier 3; fault pulls to 0 V.
     R(s, "10k 1%", "+3V3", "LADDER")
     C(s, "100n", "LADDER", "GND")
-    s.add("Switch:SW_Push", "SW", "BTN1", "Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A",
-          {"1": "LADDER", "2": "BTN1_N"}, LCSC="C318884", MPN="TS-1187A-B-A-B")
+    s.add("Switch:SW_Push", "SW", "BTN1", "Button_Switch_SMD:SW_SPST_TS-1088-xR020",
+          {"1": "LADDER", "2": "BTN1_N"}, LCSC="C720477", MPN="TS-1088-AR02016",
+          Note="XUNPU 3.9x3.0 mm 2-pad; small so the BTB fan-out routes")
     R(s, "10k 1%", "BTN1_N", "GND")
-    s.add("Switch:SW_Push", "SW", "BTN2", "Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A",
-          {"1": "LADDER", "2": "BTN2_N"}, LCSC="C318884", MPN="TS-1187A-B-A-B")
+    s.add("Switch:SW_Push", "SW", "BTN2", "Button_Switch_SMD:SW_SPST_TS-1088-xR020",
+          {"1": "LADDER", "2": "BTN2_N"}, LCSC="C720477", MPN="TS-1088-AR02016",
+          Note="XUNPU 3.9x3.0 mm 2-pad; small so the BTB fan-out routes")
     R(s, "3.3k 1%", "BTN2_N", "GND")
 
     # BOOTSEL (readable at runtime via QSPI_SS).

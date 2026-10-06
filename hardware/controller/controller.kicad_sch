@@ -11719,7 +11719,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A"
+		(property "Footprint" "Button_Switch_SMD:SW_SPST_TS-1088-xR020"
 			(at 368.3 264.16 0)
 			(hide yes)
 			(effects
@@ -11737,7 +11737,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C318884"
+		(property "LCSC" "C720477"
 			(at 368.3 264.16 0)
 			(hide yes)
 			(effects
@@ -11746,7 +11746,16 @@
 				)
 			)
 		)
-		(property "MPN" "TS-1187A-B-A-B"
+		(property "MPN" "TS-1088-AR02016"
+			(at 368.3 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Note" "XUNPU 3.9x3.0 mm 2-pad; small so the BTB fan-out routes"
 			(at 368.3 264.16 0)
 			(hide yes)
 			(effects
@@ -11881,7 +11890,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A"
+		(property "Footprint" "Button_Switch_SMD:SW_SPST_TS-1088-xR020"
 			(at 477.52 264.16 0)
 			(hide yes)
 			(effects
@@ -11899,7 +11908,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C318884"
+		(property "LCSC" "C720477"
 			(at 477.52 264.16 0)
 			(hide yes)
 			(effects
@@ -11908,7 +11917,16 @@
 				)
 			)
 		)
-		(property "MPN" "TS-1187A-B-A-B"
+		(property "MPN" "TS-1088-AR02016"
+			(at 477.52 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Note" "XUNPU 3.9x3.0 mm 2-pad; small so the BTB fan-out routes"
 			(at 477.52 264.16 0)
 			(hide yes)
 			(effects
@@ -13015,24 +13033,12 @@
 			)
 		)
 	)
-	(label "GND"
-		(at 241.3 320.04 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
+	(no_connect
+		(at 241.3 320.04)
 		(uuid "15e17415-3561-5136-a63c-2ba9b90a7963")
 	)
-	(label "GND"
-		(at 254 320.04 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
+	(no_connect
+		(at 254 320.04)
 		(uuid "bcd29c37-d5af-5bf1-975a-d44ebd2dffff")
 	)
 	(label "V5"
@@ -13395,24 +13401,12 @@
 		)
 		(uuid "91673b08-b1a4-569f-a2d9-216a27b04cf8")
 	)
-	(label "GND"
-		(at 241.3 368.3 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
+	(no_connect
+		(at 241.3 368.3)
 		(uuid "636968fd-46a3-527a-a158-386e16f7e9b6")
 	)
-	(label "GND"
-		(at 254 368.3 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
+	(no_connect
+		(at 254 368.3)
 		(uuid "2b4a2e1e-46c1-5cca-9572-889ede48dba7")
 	)
 	(symbol
@@ -13494,24 +13488,12 @@
 			)
 		)
 	)
-	(label "GND"
-		(at 304.8 320.04 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
+	(no_connect
+		(at 304.8 320.04)
 		(uuid "72e99120-d703-5228-bd2f-571fe0bfc272")
 	)
-	(label "GND"
-		(at 317.5 320.04 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
+	(no_connect
+		(at 317.5 320.04)
 		(uuid "32bb249f-4352-53ab-a6b3-a4823c16482e")
 	)
 	(label "V5"
@@ -13874,24 +13856,12 @@
 		)
 		(uuid "0f681182-80b8-5738-99c4-1853e6e5d9ba")
 	)
-	(label "GND"
-		(at 304.8 368.3 180)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify right bottom)
-		)
+	(no_connect
+		(at 304.8 368.3)
 		(uuid "03ac8c5d-1fc7-5ccb-936b-e86833a2e62e")
 	)
-	(label "GND"
-		(at 317.5 368.3 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
+	(no_connect
+		(at 317.5 368.3)
 		(uuid "9665ae5c-8ba6-5fec-80f6-8d6c45c89b63")
 	)
 	(symbol
