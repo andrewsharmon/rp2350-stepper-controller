@@ -240,6 +240,16 @@ class Client:
     def clear_stop(self):
         return self.command(P.CLEAR_STOP)
 
+    def drive(self, axes, amp_low=0.40, amp_high=0.60, amp_hold=0.25, low_speed=300.0,
+              high_speed=1600.0, reverse=False, swap_coils=False):
+        """Automatic amplitude curve (fractions 0..1) and wiring fixes."""
+        return self.command(P.DRIVE, P.req_drive(self._mask(axes), amp_low, amp_high, amp_hold,
+                                                 low_speed, high_speed, reverse, swap_coils))
+
+    def save_config(self):
+        """Write limits, profiles and drive settings to flash (axes at rest)."""
+        return self.command(P.CONFIG_SAVE)
+
     def telemetry(self, rate_hz, axes="*", fields=("pos", "vel"), sys_fields=(), events=False):
         mask = self._mask(axes)
         f = sum(P.TF[n] for n in fields)

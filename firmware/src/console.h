@@ -4,6 +4,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "config.h"
 
 // Feed one received character (echoes it; runs the line on Enter).
 void console_input(int c);
@@ -19,3 +20,6 @@ void console_set_telemetry(uint32_t hz, uint32_t axes, uint32_t fields, uint32_t
 void app_print_status(void);
 void app_set_stress(bool on);
 bool app_stress_on(void);
+// NULL on success, else why the save was refused.
+const char *app_save_config(void);
+const config_t *app_config(void);   // as loaded / last saved

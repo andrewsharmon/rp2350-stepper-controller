@@ -319,6 +319,22 @@ static void handle_frame(const uint8_t *buf, uint32_t len) {
         control_clear_request = true;
         post_cmd = false;
         break;
+    case PROTO_CONFIG_SAVE:
+        r.ok &= app_save_config() == NULL;
+        post_cmd = false;
+        break;
+    case PROTO_DRIVE:
+        c.type = CMD_DRIVE;
+        c.axes = rd_u16(&r);
+        c.drive.amp_low = rd_f32(&r);
+        c.drive.amp_high = rd_f32(&r);
+        c.drive.amp_hold = rd_f32(&r);
+        c.drive.low_speed = rd_f32(&r);
+        c.drive.high_speed = rd_f32(&r);
+        c.drive.flags = rd_u8(&r);
+        r.ok &= c.drive.amp_low >= 0.0f && c.drive.amp_low <= 1.0f && c.drive.amp_high >= 0.0f &&
+                c.drive.amp_high <= 1.0f && c.drive.amp_hold >= 0.0f && c.drive.amp_hold <= 1.0f;
+        break;
     case PROTO_TELEMETRY: {
         uint16_t hz = rd_u16(&r);
         uint16_t axes = rd_u16(&r);
@@ -342,9 +358,9 @@ static void handle_frame(const uint8_t *buf, uint32_t len) {
         ack(seq, type, PROTO_OK, 0);
         return;
     }
-    if (c.type != CMD_LIMITS && c.type != CMD_PROFILE && c.type != CMD_SET_POS)
+    if (c.type != CMD_LIMITS && c.type != CMD_PROFILE && c.type != CMD_SET_POS && c.type != CMD_DRIVE)
         app_set_stress(false);  // host motion takes over from the stress test
-    if (c.type < CMD_GROUP_CREATE && (c.axes == 0 || c.axes & ~CONTROL_ALL_AXES)) {
+    if (!control_is_group_cmd(c.type) && (c.axes == 0 || c.axes & ~CONTROL_ALL_AXES)) {
         ack(seq, type, PROTO_BAD_REQUEST, 0);
         return;
     }

@@ -18,6 +18,7 @@
 
 #include "adc_monitor.h"
 #include "board_pins.h"
+#include "config.h"
 #include "console.h"
 #include "protocol.h"
 #include "control.h"
@@ -46,6 +47,8 @@ hbridge_t motors[NUM_MOTORS];
 static bool stress;
 static uint32_t stress_start;
 static bool tripped;  // core 1 watchdog fired
+static config_t config;   // as loaded / last saved
+static bool config_from_flash;
 // Core 0 idle: time spent waiting for serial input (USB interrupts that run
 // during the wait count as idle, so core 0 load reads slightly low).
 static uint32_t core0_idle_us;
@@ -70,6 +73,36 @@ void app_set_stress(bool on) {
     printf("stress test %s\n", on ? "on" : "off");
 }
 
+const config_t *app_config(void) {
+    return &config;
+}
+
+const char *app_save_config(void) {
+    control_snapshot_t s;
+    control_snapshot(&s);
+    // Writing flash pauses core 1 for tens of ms. At rest every queued PWM
+    // period is the same hold pattern, so the DMA replaying the ring
+    // meanwhile just keeps holding; while moving it would not.
+    if (control_outputs_on && s.holding_mask != CONTROL_ALL_AXES)
+        return "all axes must be at rest and holding";
+    config_t c = config;
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        c.axis[i].vmax = s.vmax[i];
+        c.axis[i].amax = s.amax[i];
+        c.axis[i].profile = s.profile[i];
+        c.axis[i].jerk_ms = s.jerk_ms[i];
+        c.axis[i].drive = s.drive[i];
+    }
+    control_flash_busy = true;  // pauses the core 1 watchdog
+    bool ok = config_save(&c);
+    control_flash_busy = false;
+    if (!ok)
+        return "flash write failed";
+    config = c;
+    config_from_flash = true;
+    return NULL;
+}
+
 void app_print_status(void) {
     static uint32_t last_us;
     uint32_t now = time_us_32();
@@ -78,6 +111,10 @@ void app_print_status(void) {
     control_min_queued = HBRIDGE_RING_PERIODS;
     core0_idle_us = 0;
 
+    if (config_from_flash)
+        printf("config: saved, generation %lu\n", (unsigned long)config.generation);
+    else
+        printf("config: defaults (nothing saved yet)\n");
     printf("%s%s%s\n", tripped ? "WATCHDOG TRIPPED (X to reboot)" :
                        control_outputs_on ? "running" : "STOPPED (c to clear)",
            control_manual_amp >= 0.0f ? ", manual amplitude" : "", stress ? ", stress test" : "");
@@ -182,7 +219,8 @@ int main(void) {
     }
     led_init();  // after the motors: PIO2's GPIO base is set there
     adc_monitor_init();
-    control_init();
+    config_from_flash = config_load(&config);
+    control_init(&config);
     sleep_us(100);  // a few ADC rounds before core 1 starts judging the ladder
     hbridge_start(motors, NUM_MOTORS);
     TRACE("PIO started\n");
@@ -241,7 +279,7 @@ int main(void) {
         }
 
         uint32_t beat = control_heartbeat;
-        if (beat != last_beat) {
+        if (beat != last_beat || control_flash_busy) {
             last_beat = beat;
             beat_seen = get_absolute_time();
         } else if (!tripped && absolute_time_diff_us(beat_seen, get_absolute_time()) > WATCHDOG_US) {

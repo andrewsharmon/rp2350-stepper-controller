@@ -14,6 +14,8 @@
   python3 tools/stepperctl group 1 hold|resume|stop|release
   python3 tools/stepperctl amp auto|40
   python3 tools/stepperctl clear
+  python3 tools/stepperctl drive 1 --low 40 --high 60 --hold 25 [--reverse] [--swap-coils]
+  python3 tools/stepperctl save                      # limits, profiles, drive -> flash
   python3 tools/stepperctl telem --hz 100 --seconds 5 --fields pos,vel --axes 1,2 > log.csv
 
 Group ids are 1-4 here (0-3 on the wire).
@@ -73,6 +75,12 @@ def main():
     p.add_argument("--corner-ms", type=float, default=0.0); p.add_argument("--tol", type=float, default=0.0)
     p = sub.add_parser("amp"); p.add_argument("value")
     sub.add_parser("clear")
+    sub.add_parser("save")
+    p = sub.add_parser("drive"); p.add_argument("axes")
+    p.add_argument("--low", type=float, default=40); p.add_argument("--high", type=float, default=60)
+    p.add_argument("--hold", type=float, default=25); p.add_argument("--low-speed", type=float, default=300)
+    p.add_argument("--high-speed", type=float, default=1600)
+    p.add_argument("--reverse", action="store_true"); p.add_argument("--swap-coils", action="store_true")
     p = sub.add_parser("telem"); p.add_argument("--hz", type=int, default=100); p.add_argument("--seconds", type=float, default=5)
     p.add_argument("--axes", default="*"); p.add_argument("--fields", default="pos,vel"); p.add_argument("--sys", default="")
     args = ap.parse_args()
@@ -128,6 +136,12 @@ def run(c, a):
         c.amplitude(None if a.value == "auto" else float(a.value) / 100.0)
     elif a.cmd == "clear":
         c.clear_stop()
+    elif a.cmd == "save":
+        c.save_config()
+        print("saved")
+    elif a.cmd == "drive":
+        c.drive(parse_axes(a.axes), a.low / 100, a.high / 100, a.hold / 100, a.low_speed, a.high_speed,
+                a.reverse, a.swap_coils)
     elif a.cmd == "telem":
         fields = [f for f in a.fields.split(",") if f]
         sys_fields = [f for f in a.sys.split(",") if f]

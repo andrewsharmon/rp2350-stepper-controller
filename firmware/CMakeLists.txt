@@ -28,6 +28,7 @@ add_executable(stepper
     src/console.c
     src/frame.c
     src/protocol.c
+    src/config.c
 )
 
 pico_generate_pio_header(stepper ${CMAKE_CURRENT_LIST_DIR}/src/hbridge_pwm.pio)
@@ -53,6 +54,8 @@ target_link_libraries(stepper
     hardware_dma
     hardware_watchdog
     hardware_adc
+    hardware_flash
+    pico_flash
 )
 
 pico_enable_stdio_usb(stepper 1)

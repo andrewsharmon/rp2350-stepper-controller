@@ -17,7 +17,7 @@ VERSION = 1
 PING, STATUS_REQ = 0x01, 0x02
 MOVE, MOVE_REL, VELOCITY, JOG, STOP, SET_POS, LIMITS, PROFILE, PVT_POINT, PVT_START = range(0x10, 0x1A)
 GROUP_CREATE, GROUP_RELEASE, GROUP_LINE, GROUP_ARC, GROUP_HOLD, GROUP_STOP = range(0x20, 0x26)
-AMPLITUDE, CLEAR_STOP = 0x30, 0x31
+AMPLITUDE, CLEAR_STOP, CONFIG_SAVE, DRIVE = 0x30, 0x31, 0x32, 0x33
 TELEMETRY = 0x40
 # Device -> host
 ACK, PONG, STATUS = 0x80, 0x81, 0x82
@@ -170,6 +170,11 @@ def req_group_hold(gid, hold):
 
 def req_amplitude(amp):
     return struct.pack("<f", amp)
+
+
+def req_drive(axes, amp_low, amp_high, amp_hold, low_speed, high_speed, reverse=False, swap_coils=False):
+    flags = (1 if reverse else 0) | (2 if swap_coils else 0)
+    return struct.pack("<HfffffB", axes, amp_low, amp_high, amp_hold, low_speed, high_speed, flags)
 
 
 def req_telemetry(rate_hz, axes, fields, sys_fields, events):

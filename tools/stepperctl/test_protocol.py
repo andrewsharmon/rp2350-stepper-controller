@@ -54,6 +54,7 @@ class MessageTests(unittest.TestCase):
         self.assertEqual(len(P.req_group_line(0, [1, 2, 3])), 6 + 24)
         self.assertEqual(len(P.req_group_arc(0, 1, 2, 3.14)), 1 + 4 + 4 + 8 + 8 + 8)
         self.assertEqual(len(P.req_telemetry(100, 3, 1, 0, True)), 7)
+        self.assertEqual(len(P.req_drive(1, 0.4, 0.6, 0.25, 300, 1600, True)), 2 + 5 * 4 + 1)
 
     def test_units(self):
         self.assertEqual(P.to_units(1.0), 1 << 30)

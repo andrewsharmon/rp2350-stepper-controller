@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "config.h"
 #include "group.h"
 #include "ladder.h"
 #include "motion.h"
@@ -17,10 +18,9 @@
 
 #define CONTROL_ALL_AXES ((1u << NUM_MOTORS) - 1)
 
-// Defaults for new axes (bench 8 mm stepper at 5 V; holds ~1900 at 60%).
-#define CONTROL_DEFAULT_VMAX 1500.0f   // full steps/s
-#define CONTROL_DEFAULT_AMAX 2000.0f   // full steps/s^2
 
+// Group commands are the contiguous range CMD_GROUP_CREATE..CMD_GROUP_STOP;
+// use control_is_group_cmd rather than comparing against one end.
 typedef enum {
     CMD_MOVE,        // pos: absolute target (units)
     CMD_MOVE_REL,    // pos: offset from the current target or position
@@ -38,7 +38,12 @@ typedef enum {
     CMD_GROUP_ARC,     // ms: group id, vec[0..1]: center, d1: angle (rad), f1: feed, f2: tolerance
     CMD_GROUP_HOLD,    // ms: group id, f1: 1 hold / 0 resume
     CMD_GROUP_STOP,    // ms: group id: decelerate along the path, drop the queue
+    CMD_DRIVE,         // drive: amplitude curve and wiring flags
 } control_cmd_type_t;
+
+static inline bool control_is_group_cmd(int type) {
+    return type >= CMD_GROUP_CREATE && type <= CMD_GROUP_STOP;
+}
 
 typedef struct {
     uint8_t type;
@@ -50,6 +55,7 @@ typedef struct {
     uint8_t n;                    // values in vec
     double d1;
     int64_t vec[GROUP_MAX_AXES];
+    config_drive_t drive;
 } control_cmd_t;
 
 typedef struct {
@@ -67,6 +73,7 @@ typedef struct {
     uint32_t holding_mask;
     uint32_t settled_mask;         // generator idle and filters flushed
     uint16_t pvt_underrun[NUM_MOTORS];
+    config_drive_t drive[NUM_MOTORS];
     uint32_t last_seq;             // sequence number of the last applied command
     struct {
         bool active, running, hold, arc;
@@ -85,13 +92,15 @@ extern volatile bool control_clear_refused; // core 1: line still reads a stop
 extern volatile bool control_energized;     // false: drive amplitude 0
 extern volatile float control_manual_amp;   // < 0: automatic
 extern volatile bool control_stall_test;    // watchdog test: stall core 1
+extern volatile bool control_flash_busy;    // core 0: core 1 paused for a flash write
 extern volatile uint32_t control_heartbeat;
 extern volatile uint32_t control_busy_us;   // reset by the reader
 extern volatile uint32_t control_min_queued;
 extern ladder_t control_ladder;             // owned by core 1, read by core 0
 
 // Call on core 0 after the motors are initialized, before launching core 1.
-void control_init(void);
+// Limits, profiles and drive settings come from the configuration.
+void control_init(const config_t *cfg);
 void control_core1_main(void);
 
 // Queue a command for core 1, stamping it with the next sequence number

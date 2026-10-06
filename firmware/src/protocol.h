@@ -32,6 +32,10 @@
 //   0x25 GROUP_STOP                      id u8
 //   0x30 AMPLITUDE                       amp f32 (< 0 automatic, else 0..1)
 //   0x31 CLEAR_STOP                      -
+//   0x32 CONFIG_SAVE                     -   (ACK BAD_REQUEST if any axis is moving)
+//   0x33 DRIVE                           axes u16, amp_low f32, amp_high f32, amp_hold f32,
+//                                        low_speed f32, high_speed f32, flags u8
+//                                        (amplitudes 0..1; flags: 1 reverse, 2 swap coils)
 //   0x40 TELEMETRY                       rate_hz u16 (0 off), axes u16, fields u8, sys u8, events u8
 //
 // Device -> host
@@ -65,7 +69,7 @@ enum {
     PROTO_LIMITS, PROTO_PROFILE, PROTO_PVT_POINT, PROTO_PVT_START,
     PROTO_GROUP_CREATE = 0x20, PROTO_GROUP_RELEASE, PROTO_GROUP_LINE, PROTO_GROUP_ARC,
     PROTO_GROUP_HOLD, PROTO_GROUP_STOP,
-    PROTO_AMPLITUDE = 0x30, PROTO_CLEAR_STOP,
+    PROTO_AMPLITUDE = 0x30, PROTO_CLEAR_STOP, PROTO_CONFIG_SAVE, PROTO_DRIVE,
     PROTO_TELEMETRY = 0x40,
     PROTO_ACK = 0x80, PROTO_PONG, PROTO_STATUS,
     PROTO_TELEM = 0x90, PROTO_EVENT,

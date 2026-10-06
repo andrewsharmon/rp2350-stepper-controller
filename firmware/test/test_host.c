@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -17,6 +17,7 @@
 #include "motion.h"
 #include "group.h"
 #include "frame.h"
+#include "config.h"
 #include "trig.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
@@ -320,6 +321,31 @@ static void test_frame(void) {
         CHECK(got < 0 || !(type == (uint8_t)k && memcmp(payload, p, len) == 0 && got == (int)len),
               "frame %d corruption accepted", k);
     }
+}
+
+static void test_config(void) {
+    CHECK(config_crc32("123456789", 9) == 0xcbf43926u, "crc32 check value");
+    config_t a, b;
+    config_defaults(&a);
+    CHECK(config_valid(&a), "defaults not valid");
+    b = a;
+    a.generation = 5;
+    config_seal(&a);
+    b.generation = 6;
+    b.axis[3].vmax = 1234.0f;
+    config_seal(&b);
+    CHECK(config_pick(&a, &b) == 1, "newer generation not picked");
+    CHECK(config_pick(&b, &a) == 0, "newer generation not picked (swapped)");
+    // Wrap-around: 0 is newer than 0xffffffff.
+    a.generation = 0xffffffffu; config_seal(&a);
+    b.generation = 0; config_seal(&b);
+    CHECK(config_pick(&a, &b) == 1, "generation wrap");
+    // A torn or erased record loses to a valid one; none valid -> -1.
+    b.axis[0].amax += 1.0f;  // changed after sealing
+    CHECK(config_pick(&a, &b) == 0, "corrupt record picked");
+    memset(&b, 0xff, sizeof b);  // erased flash
+    CHECK(config_pick(&b, &a) == 1, "erased sector picked");
+    CHECK(config_pick(&b, &b) == -1, "nothing valid");
 }
 
 static void test_trig(void) {
@@ -705,6 +731,7 @@ int main(void) {
     test_microstep();
     test_ladder();
     test_frame();
+    test_config();
     test_trig();
     test_motion();
     test_pvt();

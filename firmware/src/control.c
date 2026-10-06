@@ -8,17 +8,13 @@
 #include "adc_monitor.h"
 #include "hbridge.h"
 #include "microstep.h"
+#include "pico/flash.h"
 
-// Automatic drive amplitude (fraction of full PWM span), tuned on the bench
-// 8 mm stepper at 5 V: flat up to AMP_LOW_SPEED, linear up to the cap at
-// AMP_HIGH_SPEED to make up for back-EMF. Drops to AMP_HOLD after the axis
-// has been settled for HOLD_DELAY_MS, since standstill heats the coils most.
-#define AMP_LOW          0.40f
-#define AMP_LOW_SPEED    300.0f   // full steps/s
-#define AMP_HIGH         0.60f
-#define AMP_HIGH_SPEED   1600.0f
-#define AMP_HOLD         0.25f
-#define HOLD_DELAY_MS    500
+// Automatic drive amplitude per axis (config_drive_t): flat up to
+// low_speed, linear up to the cap at high_speed to make up for back-EMF,
+// and amp_hold once the axis has been settled for the hold delay, since
+// standstill heats the coils most.
+//
 // Amplitude slew limit, so run/hold changes don't jerk the rotor.
 #define AMP_SLEW_PER_SEC 2.0f
 
@@ -37,6 +33,7 @@ volatile bool control_clear_refused;
 volatile bool control_energized;
 volatile float control_manual_amp = -1.0f;
 volatile bool control_stall_test;
+volatile bool control_flash_busy;
 volatile uint32_t control_heartbeat;
 volatile uint32_t control_busy_us;
 volatile uint32_t control_min_queued = HBRIDGE_RING_PERIODS;
@@ -50,16 +47,23 @@ static control_snapshot_t snap_buf;
 
 // Core 1 state.
 static motion_axis_t axes[NUM_MOTORS];
+static config_drive_t drive[NUM_MOTORS];
+static uint32_t hold_delay_ms;
 static group_t groups[GROUP_COUNT];
 static microstep_t steppers[NUM_MOTORS];
 static uint32_t rejected;
 static uint32_t last_seq;
 static uint32_t pvt_dropped;
 
-void control_init(void) {
+void control_init(const config_t *cfg) {
     queue_init(&cmd_queue, sizeof(control_cmd_t), CMD_QUEUE_LEN);
-    for (int i = 0; i < NUM_MOTORS; i++)
-        motion_init(&axes[i], CONTROL_DEFAULT_VMAX, CONTROL_DEFAULT_AMAX);
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        const config_axis_t *a = &cfg->axis[i];
+        motion_init(&axes[i], a->vmax, a->amax);
+        motion_set_profile(&axes[i], (motion_profile_t)a->profile, a->jerk_ms);
+        drive[i] = a->drive;
+    }
+    hold_delay_ms = cfg->hold_delay_ms;
     ladder_reset(&control_ladder, time_us_32());
 }
 
@@ -85,19 +89,18 @@ void control_snapshot(control_snapshot_t *snap) {
     } while (s0 != s1 || (s0 & 1));
 }
 
-static inline float auto_amplitude(float speed) {
-    const float slope = (AMP_HIGH - AMP_LOW) / (AMP_HIGH_SPEED - AMP_LOW_SPEED);
+static inline float auto_amplitude(const config_drive_t *d, float speed) {
     float v = speed < 0.0f ? -speed : speed;
-    if (v <= AMP_LOW_SPEED)
-        return AMP_LOW;
-    if (v >= AMP_HIGH_SPEED)
-        return AMP_HIGH;
-    return AMP_LOW + slope * (v - AMP_LOW_SPEED);
+    if (v <= d->low_speed)
+        return d->amp_low;
+    if (v >= d->high_speed || d->high_speed <= d->low_speed)
+        return d->amp_high;
+    return d->amp_low + (d->amp_high - d->amp_low) * (v - d->low_speed) / (d->high_speed - d->low_speed);
 }
 
 // Group commands address a group, not axes. Returns true if handled.
 static bool apply_group(const control_cmd_t *c) {
-    if (c->type < CMD_GROUP_CREATE)
+    if (!control_is_group_cmd(c->type))
         return false;
     if (c->ms >= GROUP_COUNT) {
         rejected++;
@@ -150,7 +153,7 @@ static void apply(const control_cmd_t *c) {
         if (!(c->axes & (1u << i)))
             continue;
         motion_axis_t *ax = &axes[i];
-        if (ax->group >= 0 && c->type != CMD_LIMITS && c->type != CMD_PROFILE) {
+        if (ax->group >= 0 && c->type != CMD_LIMITS && c->type != CMD_PROFILE && c->type != CMD_DRIVE) {
             // A grouped axis belongs to its group: stop stops the group,
             // other motion commands are refused.
             if (c->type == CMD_STOP)
@@ -190,6 +193,9 @@ static void apply(const control_cmd_t *c) {
         case CMD_PROFILE:
             if (!motion_set_profile(ax, (motion_profile_t)c->ms, (uint32_t)c->f1))
                 rejected++;
+            break;
+        case CMD_DRIVE:
+            drive[i] = c->drive;
             break;
         case CMD_PVT_POINT:
             if (!motion_pvt_push(ax, c->pos, c->f1, c->ms))
@@ -248,6 +254,7 @@ static void publish(uint32_t tick, const float *amp, uint32_t hold) {
     uint32_t underruns = 0, settled = 0;
     for (int i = 0; i < NUM_MOTORS; i++) {
         snap_buf.pvt_depth[i] = (uint8_t)axes[i].pvt_count;
+        snap_buf.drive[i] = drive[i];
         snap_buf.pvt_underrun[i] = (uint16_t)axes[i].pvt_underruns;
         underruns += axes[i].pvt_underruns;
         if (axes[i].settled)
@@ -278,12 +285,14 @@ static void publish(uint32_t tick, const float *amp, uint32_t hold) {
 }
 
 void __time_critical_func(control_core1_main)(void) {
+    flash_safe_execute_core_init();  // lets core 0 pause us for flash writes
+
     int32_t max_duty = hbridge_max_duty();
     int32_t min_duty = hbridge_min_duty();
 
     float amp[NUM_MOTORS] = {0};
     uint32_t settled_ticks[NUM_MOTORS] = {0};
-    const uint32_t hold_ticks = HOLD_DELAY_MS * (MOTION_TICK_HZ / 1000);
+    const uint32_t hold_ticks = hold_delay_ms * (MOTION_TICK_HZ / 1000);
     const float amp_step = AMP_SLEW_PER_SEC / (float)HBRIDGE_PWM_HZ;
 
     // Interpolation of the current tick: per-period phase step, plus one
@@ -327,6 +336,7 @@ void __time_critical_func(control_core1_main)(void) {
             // are dropped (the axes are halted).
             while (queue_try_remove(&cmd_queue, &cmd))
                 if (cmd.type == CMD_SET_POS || cmd.type == CMD_LIMITS || cmd.type == CMD_PROFILE ||
+                    cmd.type == CMD_DRIVE ||
                     cmd.type == CMD_GROUP_CREATE || cmd.type == CMD_GROUP_RELEASE)
                     apply(&cmd);
             for (int i = 0; i < NUM_MOTORS; i++)
@@ -379,8 +389,8 @@ void __time_critical_func(control_core1_main)(void) {
                         hold |= 1u << i;
                     want_amp[i] = !energized ? 0.0f
                                 : manual >= 0.0f ? manual
-                                : holding ? AMP_HOLD
-                                : auto_amplitude(axes[i].vel);
+                                : holding ? drive[i].amp_hold
+                                : auto_amplitude(&drive[i], axes[i].vel);
                 }
                 tick++;
                 publish(tick, amp, hold);
@@ -397,6 +407,14 @@ void __time_critical_func(control_core1_main)(void) {
                 int32_t duty_a, duty_b;
                 steppers[i].amplitude = a;
                 microstep_duties(&steppers[i], max_duty, min_duty, &duty_a, &duty_b);
+                // Wiring fixes: swapped coils, reversed rotation (flip coil B).
+                if (drive[i].flags & CONFIG_FLAG_SWAP_COILS) {
+                    int32_t t = duty_a;
+                    duty_a = duty_b;
+                    duty_b = t;
+                }
+                if (drive[i].flags & CONFIG_FLAG_REVERSE)
+                    duty_b = -duty_b;
                 hbridge_write_period(&motors[i], duty_a, duty_b);
                 steppers[i].phase += (uint32_t)(step[i] + (sub < extra[i] ? extra_sign[i] : 0));
             }

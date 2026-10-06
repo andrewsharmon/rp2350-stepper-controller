@@ -15,6 +15,7 @@
 #define LINE_MAX      160
 #define MAX_TELEM_HZ  1000  // one line per motion tick
 #define JOG_TIMEOUT_MS_DEFAULT 300
+#define GROUP_DEFAULT_FEED     1500.0f
 
 static char line[LINE_MAX];
 static uint32_t line_len;
@@ -54,6 +55,10 @@ static const char help_text[] =
     "  prof <ax> <name> [ms] motion profile: trap, scurve, smooth, cosine, quintic;\n"
     "                        ms = jerk time for scurve/smooth (default 30, max 100)\n"
     "  amp auto|<percent>    drive amplitude: automatic curve, or fixed\n"
+    "  drive <ax> <low%> <high%> <hold%> [low_spd high_spd]  automatic amplitude curve\n"
+    "  dir <ax> fwd|rev      reverse rotation      coils <ax> ab|ba  swap coils\n"
+    "  cfg                   show the configuration    save  write it to flash\n"
+    "  defaults              restore defaults (until saved)\n"
     "  t <hz>                telemetry lines per second (0 = off, max 1000)\n"
     "  ta <ax>               telemetry axes (default *)\n"
     "  tf <f,...>            per-axis fields: pos vel mode amp q (default pos,vel)\n"
@@ -172,6 +177,25 @@ static void print_axes(void) {
                (unsigned long)s.rejected);
 }
 
+static void print_config(void) {
+    control_snapshot_t s;
+    control_snapshot(&s);
+    const config_t *saved = app_config();
+    printf("  ax   vmax    amax  profile      amp low/high/hold   speeds      dir  coils\n");
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        const config_drive_t *d = &s.drive[i];
+        const config_axis_t *a = &saved->axis[i];
+        bool changed = a->vmax != s.vmax[i] || a->amax != s.amax[i] || a->profile != s.profile[i] ||
+                       a->jerk_ms != s.jerk_ms[i] || memcmp(&a->drive, d, sizeof *d) != 0;
+        printf("  %2d %6.0f %7.0f  %-7s %3u  %3.0f%% /%3.0f%% /%3.0f%%  %5.0f-%-5.0f  %s  %s%s\n", i + 1,
+               (double)s.vmax[i], (double)s.amax[i], motion_profile_name((motion_profile_t)s.profile[i]),
+               s.jerk_ms[i], (double)(d->amp_low * 100), (double)(d->amp_high * 100),
+               (double)(d->amp_hold * 100), (double)d->low_speed, (double)d->high_speed,
+               d->flags & CONFIG_FLAG_REVERSE ? "rev" : "fwd", d->flags & CONFIG_FLAG_SWAP_COILS ? "ba" : "ab",
+               changed ? "  (not saved)" : "");
+    }
+}
+
 static void run_line(char *buf) {
     char *argv[16];
     int argc = 0;
@@ -266,7 +290,7 @@ static void run_line(char *buf) {
                 goto usage;
             c.type = CMD_GROUP_CREATE;
             c.axes = (uint16_t)parse_axes(argv[2]);
-            c.f1 = CONTROL_DEFAULT_VMAX;
+            c.f1 = GROUP_DEFAULT_FEED;
             if (!c.axes || (argc >= 4 && !parse_float(argv[3], &c.f1)) ||
                 (argc == 5 && !parse_float(argv[4], &c.f2)))
                 goto usage;
@@ -319,6 +343,62 @@ static void run_line(char *buf) {
         c.ms = (uint32_t)p;
         c.f1 = f;
         post(&c);
+    } else if (strcmp(cmd, "cfg") == 0) {
+        print_config();
+    } else if (strcmp(cmd, "save") == 0) {
+        const char *err = app_save_config();
+        if (err)
+            printf("not saved: %s\n", err);
+        else
+            printf("saved (generation %lu)\n", (unsigned long)app_config()->generation);
+    } else if (strcmp(cmd, "defaults") == 0) {
+        config_t d;
+        config_defaults(&d);
+        for (int i = 0; i < NUM_MOTORS; i++) {
+            const config_axis_t *a = &d.axis[i];
+            control_cmd_t k = {.axes = (uint16_t)(1u << i)};
+            k.type = CMD_LIMITS; k.f1 = a->vmax; k.f2 = a->amax; post(&k);
+            k.type = CMD_PROFILE; k.ms = a->profile; k.f1 = a->jerk_ms; post(&k);
+            k.type = CMD_DRIVE; k.drive = a->drive; post(&k);
+        }
+        printf("defaults restored (save to keep them)\n");
+    } else if ((strcmp(cmd, "drive") == 0 && (argc == 5 || argc == 7)) ||
+               ((strcmp(cmd, "dir") == 0 || strcmp(cmd, "coils") == 0) && argc == 3)) {
+        uint32_t mask = parse_axes(argv[1]);
+        if (!mask)
+            goto usage;
+        float v[5];
+        bool drive_cmd = cmd[0] == 'd' && cmd[1] == 'r';
+        for (int k = 0; drive_cmd && k < argc - 2; k++)
+            if (!parse_float(argv[2 + k], &v[k]) || (k < 3 && (v[k] < 0.0f || v[k] > 100.0f)))
+                goto usage;
+        if (!drive_cmd && strcmp(argv[2], "fwd") && strcmp(argv[2], "rev") &&
+            strcmp(argv[2], "ab") && strcmp(argv[2], "ba"))
+            goto usage;
+        control_snapshot_t s;
+        control_snapshot(&s);
+        for (int i = 0; i < NUM_MOTORS; i++) {
+            if (!(mask & (1u << i)))
+                continue;
+            control_cmd_t k = {.type = CMD_DRIVE, .axes = (uint16_t)(1u << i), .drive = s.drive[i]};
+            config_drive_t *d = &k.drive;
+            if (drive_cmd) {
+                d->amp_low = v[0] / 100.0f;
+                d->amp_high = v[1] / 100.0f;
+                d->amp_hold = v[2] / 100.0f;
+                if (argc == 7) {
+                    d->low_speed = v[3];
+                    d->high_speed = v[4];
+                }
+            } else if (strcmp(cmd, "dir") == 0) {
+                d->flags = (uint8_t)((d->flags & ~CONFIG_FLAG_REVERSE) |
+                                     (strcmp(argv[2], "rev") == 0 ? CONFIG_FLAG_REVERSE : 0));
+            } else {
+                d->flags = (uint8_t)((d->flags & ~CONFIG_FLAG_SWAP_COILS) |
+                                     (strcmp(argv[2], "ba") == 0 ? CONFIG_FLAG_SWAP_COILS : 0));
+            }
+            post(&k);
+        }
     } else if (strcmp(cmd, "amp") == 0 && argc == 2) {
         if (strcmp(argv[1], "auto") == 0)
             control_manual_amp = -1.0f;

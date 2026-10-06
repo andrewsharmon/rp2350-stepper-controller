@@ -21,8 +21,8 @@ DRV8833-class dual H-bridges (AT8833).
 | 2 | One motor: sine PWM via PIO + DMA | done, verified on hardware |
 | 3 | 10-axis PWM, ADC monitor, e-stop/button ladder, WS2812 | done on Pico 2; ladder buttons not yet bench-wired |
 | 4 | Trajectory generators and profiles, jog modes, telemetry | done (text telemetry; binary framing comes with milestone 5) |
-| 5 | Coordinated groups and planner, USB protocol, host tool | groups, planner, binary protocol and host tool done |
-| 6 | I²C target, cam/LED shows, flash config, standalone mode | |
+| 5 | Coordinated groups and planner, USB protocol, host tool | done |
+| 6 | I²C target, cam/LED shows, flash config, standalone mode | in progress: flash config done |
 | 7 | PCB layout, fab, bring-up of the board stack | |
 
 What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
@@ -30,6 +30,7 @@ What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
 - **PWM:** 20 kHz, four-segment H-bridge PWM with slow-decay brake off-time and 1/256-step sine microstepping. Duties below the driver's 0.5 µs minimum pulse are error-diffused.
 - **10 axes:** each has its own position, velocity or jog mode on a 1 kHz trajectory tick. Drive amplitude depends on speed, with lower holding current at standstill. Core 1 is about 33-35% loaded, core 0 about 0.5%.
 - **Coordinated groups:** up to 4 groups, each owning a set of axes. A group follows a queue of straight lines and arcs in joint space, with every axis starting and finishing together. Lookahead keeps it moving through gentle corners and chord-split arcs, and no axis exceeds its own limits. On the Pico 2, a 300-step-radius circle ran at a constant 800 steps/s and closed exactly.
+- **Configuration in flash:** per-axis limits, motion profile, automatic amplitude curve (run low/high, hold, corner speeds) and wiring fixes (reverse direction, swap coils) survive power cycles. Two sectors are written alternately with a generation counter and CRC, so an interrupted save keeps the previous configuration.
 - **Streamed PVT:** the host sends position/velocity/time points, and each axis follows a cubic through them. A 10-axis wave streamed at 20 ms per point tracked the ideal curve within 0.0005 steps. Running out of points while moving brakes safely.
 - **Telemetry:** up to 1 kHz with selectable axes and fields (position, speed, mode, amplitude, PVT queue, plus motor voltage, ladder, stop state and the last applied command). Each line is numbered so a host can detect drops. Event lines report finished moves, PVT underruns and stops. At 1 kHz with every field on 10 axes, no lines were dropped and core 0 was 39% busy.
 - **Motion profiles per axis:** `trap`, `scurve` (the default: jerk-limited by a moving average, Tj = 30 ms), `smooth` (two moving averages), `cosine` and `quintic`. Every profile lands exactly on its target within the speed and acceleration limits, and moves can be redirected mid-move without jumps.
@@ -112,6 +113,9 @@ t 100            100 telemetry lines/s (header line names the columns)
 tf pos,vel,mode  per-axis telemetry fields; ta 1,2 picks axes, ts adds system fields
 te on            event lines: E <tick> done <ax> <pos>, underrun, stop, clear
 echo off         for scripts: no echo or prompt
+drive 1 40 60 25 axis 1 amplitude: 40% at low speed, 60% at high speed, 25% holding
+dir 2 rev        reverse axis 2 (coils 2 ba swaps its coils)
+cfg / save       show the configuration / write it to flash (axes at rest)
 ?                status, loads and per-axis table
 ```
 
