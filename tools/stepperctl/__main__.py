@@ -16,6 +16,8 @@
   python3 tools/stepperctl clear
   python3 tools/stepperctl drive 1 --low 40 --high 60 --hold 25 [--reverse] [--swap-coils]
   python3 tools/stepperctl save                      # limits, profiles, drive -> flash
+  python3 tools/stepperctl show upload tools/shows/wave.json --slot 1
+  python3 tools/stepperctl show list|run 1|stop|erase 1
   python3 tools/stepperctl telem --hz 100 --seconds 5 --fields pos,vel --axes 1,2 > log.csv
 
 Group ids are 1-4 here (0-3 on the wire).
@@ -31,6 +33,7 @@ if __package__ in (None, ""):  # run as `python3 tools/stepperctl`
     __package__ = "stepperctl"
 
 from stepperctl.client import Client, CommandError  # noqa: E402
+from stepperctl import show as show_compiler  # noqa: E402
 
 
 def parse_axes(s):
@@ -76,6 +79,8 @@ def main():
     p = sub.add_parser("amp"); p.add_argument("value")
     sub.add_parser("clear")
     sub.add_parser("save")
+    p = sub.add_parser("show"); p.add_argument("action"); p.add_argument("arg", nargs="?")
+    p.add_argument("--slot", type=int, default=1)
     p = sub.add_parser("drive"); p.add_argument("axes")
     p.add_argument("--low", type=float, default=40); p.add_argument("--high", type=float, default=60)
     p.add_argument("--hold", type=float, default=25); p.add_argument("--low-speed", type=float, default=300)
@@ -136,6 +141,25 @@ def run(c, a):
         c.amplitude(None if a.value == "auto" else float(a.value) / 100.0)
     elif a.cmd == "clear":
         c.clear_stop()
+    elif a.cmd == "show":
+        if a.action == "upload":
+            blob = show_compiler.load(a.arg, n_axes=c.n_axes)
+            c.show_upload(a.slot - 1, blob)
+            print(f"uploaded {a.arg} ({len(blob)} bytes) to slot {a.slot}")
+        elif a.action == "list":
+            info = c.show_list()
+            for k, s in enumerate(info["slots"]):
+                tag = "  (running)" if info["playing"] == k else ""
+                print(f"  {k + 1}: " + (f"{s['name']}, {s['duration_ms']} ms{' loop' if s['loop'] else ''}, "
+                                        f"{s['tracks']} tracks{tag}" if s else "empty"))
+        elif a.action == "run":
+            c.show_run(int(a.arg) - 1)
+        elif a.action == "stop":
+            c.show_stop()
+        elif a.action == "erase":
+            c.show_erase(int(a.arg) - 1)
+        else:
+            sys.exit(f"unknown show action {a.action}")
     elif a.cmd == "save":
         c.save_config()
         print("saved")

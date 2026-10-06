@@ -23,7 +23,7 @@
 #define LADDER_EVAL_US   10
 
 #define PERIODS_PER_TICK (HBRIDGE_PWM_HZ / MOTION_TICK_HZ)
-#define CMD_QUEUE_LEN    32
+#define CMD_QUEUE_LEN    64   // room for a 10-axis show feed plus host traffic
 
 extern hbridge_t motors[NUM_MOTORS];  // main.c
 

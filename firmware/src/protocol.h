@@ -37,6 +37,14 @@
 //                                        low_speed f32, high_speed f32, flags u8
 //                                        (amplitudes 0..1; flags: 1 reverse, 2 swap coils)
 //   0x40 TELEMETRY                       rate_hz u16 (0 off), axes u16, fields u8, sys u8, events u8
+//   0x50 SHOW_BEGIN                      slot u8 (0-3), len u32: start an upload
+//   0x51 SHOW_DATA                       offset u32, bytes...
+//   0x52 SHOW_END                        -   validate and write to flash (axes at rest);
+//                                            ACK BAD_REQUEST if invalid or busy
+//   0x53 SHOW_RUN                        slot u8   (ACK BAD_REQUEST if it can't run)
+//   0x54 SHOW_STOP                       -
+//   0x55 SHOW_LIST                       -                   -> SHOW_INFO
+//   0x56 SHOW_ERASE                      slot u8
 //
 // Device -> host
 //   0x80 ACK        req_type u8, result u8 (PROTO_OK...), cmd_seq u32
@@ -52,6 +60,8 @@
 //                   system fields in bit order: seq u32, vmot_mv u16, ladder_mv u16, stop u8,
 //                   then per selected axis, per field in bit order:
 //                             pos i64, vel f32, mode u8, amp_pct u8, pvt_queue u8
+//   0x83 SHOW_INFO  playing u8 (slot, 0xff none), then per slot (4): valid u8,
+//                   name char[16], duration_ms u32, loop u8, n_tracks u8
 //   0x91 EVENT      tick u32, kind u8 (PROTO_EV_...), axis u8 (1-based, 0 = none), pos i64
 //
 // Telemetry field bits: TF_POS 1, TF_VEL 2, TF_MODE 4, TF_AMP 8, TF_Q 16.
@@ -71,7 +81,9 @@ enum {
     PROTO_GROUP_HOLD, PROTO_GROUP_STOP,
     PROTO_AMPLITUDE = 0x30, PROTO_CLEAR_STOP, PROTO_CONFIG_SAVE, PROTO_DRIVE,
     PROTO_TELEMETRY = 0x40,
-    PROTO_ACK = 0x80, PROTO_PONG, PROTO_STATUS,
+    PROTO_SHOW_BEGIN = 0x50, PROTO_SHOW_DATA, PROTO_SHOW_END, PROTO_SHOW_RUN, PROTO_SHOW_STOP,
+    PROTO_SHOW_LIST, PROTO_SHOW_ERASE,
+    PROTO_ACK = 0x80, PROTO_PONG, PROTO_STATUS, PROTO_SHOW_INFO,
     PROTO_TELEM = 0x90, PROTO_EVENT,
 };
 

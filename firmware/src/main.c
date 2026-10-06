@@ -24,6 +24,7 @@
 #include "control.h"
 #include "hbridge.h"
 #include "led.h"
+#include "player.h"
 #include "trig.h"
 
 #define POWER_UP_SETTLE_MS 100
@@ -116,6 +117,8 @@ void app_print_status(void) {
         printf("config: saved, generation %lu\n", (unsigned long)config.generation);
     else
         printf("config: defaults (nothing saved yet)\n");
+    if (player_slot() >= 0)
+        printf("show %d: %s\n", player_slot() + 1, player_state());
     printf("%s%s%s\n", tripped ? "WATCHDOG TRIPPED (X to reboot)" :
                        control_outputs_on ? "running" : "STOPPED (c to clear)",
            control_manual_amp >= 0.0f ? ", manual amplitude" : "", stress ? ", stress test" : "");
@@ -186,6 +189,14 @@ static void update_leds(void) {
                 led_set(px, 20, 20, 20);  // at rest, not yet holding
         }
     }
+    // A running show's LED tracks take over their pixels.
+    for (uint32_t px = 0; px < LED_CHAIN; px++) {
+        uint8_t rgb[3];
+        if (player_led(px, rgb))
+            led_set(px, rgb[0], rgb[1], rgb[2]);
+        else if (px >= LED_COUNT)
+            led_set(px, 0, 0, 0);
+    }
     led_show();
 }
 
@@ -250,6 +261,7 @@ int main(void) {
             stress_update((float)(now - stress_start) * 1e-6f);
         }
         console_telemetry(now);
+        player_poll(now);
         if (adc_monitor_check())
             printf("ADC FIFO overflow: monitor restarted\n");
 

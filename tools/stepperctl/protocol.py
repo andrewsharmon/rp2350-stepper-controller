@@ -19,6 +19,8 @@ MOVE, MOVE_REL, VELOCITY, JOG, STOP, SET_POS, LIMITS, PROFILE, PVT_POINT, PVT_ST
 GROUP_CREATE, GROUP_RELEASE, GROUP_LINE, GROUP_ARC, GROUP_HOLD, GROUP_STOP = range(0x20, 0x26)
 AMPLITUDE, CLEAR_STOP, CONFIG_SAVE, DRIVE = 0x30, 0x31, 0x32, 0x33
 TELEMETRY = 0x40
+SHOW_BEGIN, SHOW_DATA, SHOW_END, SHOW_RUN, SHOW_STOP, SHOW_LIST, SHOW_ERASE = range(0x50, 0x57)
+SHOW_INFO = 0x83
 # Device -> host
 ACK, PONG, STATUS = 0x80, 0x81, 0x82
 TELEM, EVENT = 0x90, 0x91
@@ -301,6 +303,18 @@ def parse_telemetry(p, axes_list, fields, sys_fields):
                 off += struct.calcsize(fmt)
                 d[name] = to_steps(v) if name == "pos" else v
         out["axes"][a] = d
+    return out
+
+
+def parse_show_info(p, slots=4):
+    playing = p[0]
+    out = {"playing": None if playing == 0xFF else playing, "slots": []}
+    off = 1
+    for _ in range(slots):
+        valid, name, duration, loop, n_tracks = struct.unpack_from("<B16sIBB", p, off)
+        off += 23
+        out["slots"].append({"valid": bool(valid), "name": name.rstrip(b"\0").decode(errors="replace"),
+                             "duration_ms": duration, "loop": bool(loop), "tracks": n_tracks} if valid else None)
     return out
 
 

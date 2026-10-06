@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -18,6 +18,7 @@
 #include "group.h"
 #include "frame.h"
 #include "config.h"
+#include "show.h"
 #include "trig.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
@@ -346,6 +347,152 @@ static void test_config(void) {
     memset(&b, 0xff, sizeof b);  // erased flash
     CHECK(config_pick(&b, &a) == 1, "erased sector picked");
     CHECK(config_pick(&b, &b) == -1, "nothing valid");
+}
+
+// Minimal show compiler, mirroring tools/stepperctl.
+typedef struct {
+    uint8_t b[4096];
+    uint32_t n, track_at;
+} blob_t;
+
+static void put_le(blob_t *bl, uint64_t v, int bytes) {
+    for (int i = 0; i < bytes; i++)
+        bl->b[bl->n++] = (uint8_t)(v >> (8 * i));
+}
+
+static void put_f(blob_t *bl, float f) {
+    uint32_t u;
+    memcpy(&u, &f, 4);
+    put_le(bl, u, 4);
+}
+
+static void show_begin(blob_t *bl, const char *name, uint32_t duration, bool loop, uint8_t n_tracks) {
+    memset(bl, 0, sizeof *bl);
+    put_le(bl, SHOW_MAGIC, 4); put_le(bl, SHOW_VERSION, 2); put_le(bl, SHOW_HEADER_SIZE, 2);
+    put_le(bl, 0, 4); put_le(bl, 0, 4);  // length, crc: filled by show_end
+    memcpy(bl->b + bl->n, name, strlen(name)); bl->n += SHOW_NAME_LEN;
+    put_le(bl, duration, 4); put_le(bl, loop, 1); put_le(bl, n_tracks, 1); put_le(bl, 0, 2);
+}
+
+static void show_track(blob_t *bl, uint8_t type, uint8_t ch, uint16_t n_keys) {
+    put_le(bl, type, 1); put_le(bl, ch, 1); put_le(bl, n_keys, 2);
+}
+
+static void show_axis_kf(blob_t *bl, uint32_t t, float pos, float vel) {
+    put_le(bl, t, 4); put_f(bl, pos); put_f(bl, vel);
+}
+
+static void show_led_kf(blob_t *bl, uint32_t t, uint8_t r, uint8_t g, uint8_t b) {
+    put_le(bl, t, 4); put_le(bl, r, 1); put_le(bl, g, 1); put_le(bl, b, 1); put_le(bl, 0, 1);
+}
+
+static void show_end(blob_t *bl) {
+    for (int i = 0; i < 4; i++) bl->b[8 + i] = (uint8_t)(bl->n >> (8 * i));
+    uint32_t crc = show_crc32(bl->b, bl->n);
+    for (int i = 0; i < 4; i++) bl->b[12 + i] = (uint8_t)(crc >> (8 * i));
+}
+
+static void test_show(void) {
+    blob_t bl;
+    show_t s;
+    const float A = NAN;  // automatic speed
+
+    // Non-looping: axis 1 keys at 0/1000/2000 ms; LED pixel 11 red -> blue.
+    show_begin(&bl, "test", 0, false, 2);
+    show_track(&bl, SHOW_TRACK_AXIS, 0, 3);
+    show_axis_kf(&bl, 0, 0, A); show_axis_kf(&bl, 1000, 100, A); show_axis_kf(&bl, 2000, 50, A);
+    show_track(&bl, SHOW_TRACK_LED, 11, 2);
+    show_led_kf(&bl, 0, 255, 0, 0); show_led_kf(&bl, 1000, 0, 0, 255);
+    show_end(&bl);
+    const char *err = show_parse(&s, bl.b, bl.n, 10, 20);
+    CHECK(!err, "parse: %s", err ? err : "");
+    CHECK(strcmp(s.name, "test") == 0 && s.duration_ms == 2000 && !s.loop, "header");
+    const show_track_t *ax = &s.track[0], *led = &s.track[1];
+    CHECK(show_axis_points(&s, ax) == 2, "points %u", show_axis_points(&s, ax));
+    show_point_t p0 = show_axis_point(&s, ax, 0), p1 = show_axis_point(&s, ax, 1);
+    CHECK(p0.t_ms == 1000 && p0.pos == 100 && fabsf(p0.vel - 25.0f) < 1e-4f, "auto speed %f", p0.vel);
+    CHECK(p1.t_ms == 2000 && p1.vel == 0.0f, "end speed %f", p1.vel);
+    uint8_t rgb[3];
+    show_led_at(&s, led, 500, rgb);
+    CHECK(rgb[0] == 128 && rgb[2] == 128, "led mid %u,%u,%u", rgb[0], rgb[1], rgb[2]);
+    show_led_at(&s, led, 1500, rgb);
+    CHECK(rgb[0] == 0 && rgb[2] == 255, "led after end");
+
+    // Playback through the real PVT path passes exactly through the keys.
+    motion_axis_t m;
+    motion_init(&m, 1500, 2000);
+    for (uint32_t i = 0, t_prev = 0; i < show_axis_points(&s, ax); i++) {
+        show_point_t pt = show_axis_point(&s, ax, i);
+        motion_pvt_push(&m, motion_steps_to_units(pt.pos), pt.vel, pt.t_ms - t_prev);
+        t_prev = pt.t_ms;
+    }
+    motion_pvt_start(&m);
+    for (int n = 1; n <= 2000; n++) {
+        motion_tick(&m);
+        if (n == 1000)
+            CHECK(m.pos == motion_steps_to_units(100), "at 1000 ms: %f", motion_units_to_steps(m.pos));
+    }
+    CHECK(m.pos == motion_steps_to_units(50) && m.pvt_underruns == 0, "end %f", motion_units_to_steps(m.pos));
+
+    // Looping: keys at 0 and 1000, period 2000; automatic speeds wrap.
+    show_begin(&bl, "loop", 2000, true, 2);
+    show_track(&bl, SHOW_TRACK_AXIS, 2, 2);
+    show_axis_kf(&bl, 0, 0, A); show_axis_kf(&bl, 1000, 200, A);
+    show_track(&bl, SHOW_TRACK_LED, 0, 2);
+    show_led_kf(&bl, 500, 0, 200, 0); show_led_kf(&bl, 1500, 0, 0, 0);
+    show_end(&bl);
+    err = show_parse(&s, bl.b, bl.n, 10, 20);
+    CHECK(!err, "loop parse: %s", err ? err : "");
+    ax = &s.track[0];
+    show_point_t q[4];
+    for (int i = 0; i < 4; i++)
+        q[i] = show_axis_point(&s, ax, (uint64_t)i);
+    CHECK(q[0].t_ms == 1000 && q[1].t_ms == 2000 && q[2].t_ms == 3000 && q[3].t_ms == 4000, "loop times");
+    CHECK(q[1].pos == 0 && q[2].pos == 200, "loop positions");
+    // At the extremes of a symmetric triangle wave the automatic speed is 0.
+    CHECK(q[0].vel == 0.0f && q[1].vel == 0.0f, "loop speeds %f %f", q[0].vel, q[1].vel);
+    show_led_at(&s, &s.track[1], 2000 + 250, rgb);  // across the seam: 1500 -> 2500
+    CHECK(rgb[1] == 150, "led seam %u", rgb[1]);
+
+    // Limits: 200 steps in 1 s from rest needs ~300 steps/s, 1200 steps/s^2.
+    float vmax[10], amax[10];
+    for (int i = 0; i < 10; i++) { vmax[i] = 1500; amax[i] = 2000; }
+    char msg[160];
+    CHECK(show_check_limits(&s, vmax, amax, msg, sizeof msg) == NULL, "limits: %s", msg);
+    amax[2] = 1000;
+    CHECK(show_check_limits(&s, vmax, amax, msg, sizeof msg) != NULL, "too-fast show accepted");
+
+    // A show compiled by tools/stepperctl/show.py (test_show.py checks the
+    // same bytes), so both sides agree on the format.
+    static const char golden_hex[] = "53484f570100280050000000d69d43c578000000000000000000000000000000d00700000102000001020200000000000000c03f0000c07fe8030000000010c000002041020c01000000000010203000";
+    uint8_t golden[sizeof golden_hex / 2];
+    for (size_t i = 0; i < sizeof golden; i++) {
+        unsigned v;
+        sscanf(golden_hex + 2 * i, "%2x", &v);
+        golden[i] = (uint8_t)v;
+    }
+    err = show_parse(&s, golden, sizeof golden, 10, 20);
+    CHECK(!err, "python show: %s", err ? err : "");
+    CHECK(strcmp(s.name, "x") == 0 && s.duration_ms == 2000 && s.loop && s.n_tracks == 2, "python show header");
+    show_point_t g0 = show_axis_key(&s, &s.track[0], 0, 0), g1 = show_axis_key(&s, &s.track[0], 1, 0);
+    CHECK(s.track[0].channel == 2 && g0.pos == 1.5f && g1.pos == -2.25f && g1.vel == 10.0f && g1.t_ms == 1000,
+          "python show axis keys");
+    show_led_at(&s, &s.track[1], 0, rgb);
+    CHECK(s.track[1].channel == 12 && rgb[0] == 0x10 && rgb[1] == 0x20 && rgb[2] == 0x30, "python show led");
+
+    // Rejections.
+    bl.b[20] ^= 1;  // name byte: CRC no longer matches
+    CHECK(show_parse(&s, bl.b, bl.n, 10, 20) != NULL, "bad CRC accepted");
+    show_begin(&bl, "bad", 1000, true, 1);
+    show_track(&bl, SHOW_TRACK_AXIS, 0, 2);
+    show_axis_kf(&bl, 0, 0, A); show_axis_kf(&bl, 1000, 1, A);  // loop needs duration > 1000
+    show_end(&bl);
+    CHECK(show_parse(&s, bl.b, bl.n, 10, 20) != NULL, "loop without seam accepted");
+    show_begin(&bl, "bad", 0, false, 1);
+    show_track(&bl, SHOW_TRACK_AXIS, 12, 1);
+    show_axis_kf(&bl, 0, 0, A);
+    show_end(&bl);
+    CHECK(show_parse(&s, bl.b, bl.n, 10, 20) != NULL, "axis 13 accepted");
 }
 
 static void test_trig(void) {
@@ -732,6 +879,7 @@ int main(void) {
     test_ladder();
     test_frame();
     test_config();
+    test_show();
     test_trig();
     test_motion();
     test_pvt();

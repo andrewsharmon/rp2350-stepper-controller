@@ -10,7 +10,10 @@
 #include "adc_monitor.h"
 #include "control.h"
 #include "microstep.h"
+#include "player.h"
 #include "protocol.h"
+#include "show_store.h"
+#include "led.h"
 
 #define LINE_MAX      160
 #define MAX_TELEM_HZ  1000  // one line per motion tick
@@ -58,6 +61,7 @@ static const char help_text[] =
     "  drive <ax> <low%> <high%> <hold%> [low_spd high_spd]  automatic amplitude curve\n"
     "  dir <ax> fwd|rev      reverse rotation      coils <ax> ab|ba  swap coils\n"
     "  cfg                   show the configuration    save  write it to flash\n"
+    "  show list | run <n> | stop   shows in flash slots 1-4 (upload with stepperctl)\n"
     "  defaults              restore defaults (until saved)\n"
     "  t <hz>                telemetry lines per second (0 = off, max 1000)\n"
     "  ta <ax>               telemetry axes (default *)\n"
@@ -343,6 +347,31 @@ static void run_line(char *buf) {
         c.ms = (uint32_t)p;
         c.f1 = f;
         post(&c);
+    } else if (strcmp(cmd, "show") == 0 && argc >= 2) {
+        if (strcmp(argv[1], "list") == 0) {
+            for (uint32_t k = 0; k < SHOW_SLOTS; k++) {
+                uint32_t len;
+                const uint8_t *blob = show_store_blob(k, &len);
+                show_t sh;
+                const char *err = blob ? show_parse(&sh, blob, len, NUM_MOTORS, LED_CHAIN) : "empty";
+                if (err)
+                    printf("  %lu: %s\n", (unsigned long)k + 1, err);
+                else
+                    printf("  %lu: %s, %lu ms%s, %lu tracks%s\n", (unsigned long)k + 1, sh.name,
+                           (unsigned long)sh.duration_ms, sh.loop ? " loop" : "",
+                           (unsigned long)sh.n_tracks, player_slot() == (int)k ? "  (running)" : "");
+            }
+        } else if (strcmp(argv[1], "run") == 0 && argc == 3) {
+            long k = strtol(argv[2], NULL, 10);
+            app_set_stress(false);
+            const char *err = k >= 1 && k <= SHOW_SLOTS ? player_start((uint32_t)k - 1) : "no such slot";
+            if (err)
+                printf("show not started: %s\n", err);
+        } else if (strcmp(argv[1], "stop") == 0) {
+            player_stop();
+        } else {
+            goto usage;
+        }
     } else if (strcmp(cmd, "cfg") == 0) {
         print_config();
     } else if (strcmp(cmd, "save") == 0) {

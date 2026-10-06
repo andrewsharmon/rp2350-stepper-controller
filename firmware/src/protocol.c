@@ -8,6 +8,9 @@
 #include "console.h"
 #include "frame.h"
 #include "hbridge.h"
+#include "led.h"
+#include "player.h"
+#include "show_store.h"
 
 #define FIRMWARE_NAME "rp2350-stepper"
 
@@ -209,6 +212,47 @@ void protocol_send_event(uint32_t tick, uint8_t kind, uint8_t axis, int64_t pos)
     send(PROTO_EVENT, 0, &w);
 }
 
+// --- shows -------------------------------------------------------------------------
+
+static uint8_t upload[SHOW_MAX_SIZE];   // padded with 0xff to whole flash pages
+static uint32_t upload_len, upload_slot = SHOW_SLOTS;
+
+static void send_show_info(uint16_t seq) {
+    writer_t w = {0};
+    wr_u8(&w, player_slot() < 0 ? 0xff : (uint8_t)player_slot());
+    for (uint32_t k = 0; k < SHOW_SLOTS; k++) {
+        uint32_t len;
+        const uint8_t *blob = show_store_blob(k, &len);
+        show_t s;
+        bool valid = blob && !show_parse(&s, blob, len, NUM_MOTORS, LED_CHAIN);
+        wr_u8(&w, valid);
+        char name[SHOW_NAME_LEN] = {0};
+        if (valid)
+            memcpy(name, s.name, SHOW_NAME_LEN);
+        put(&w, name, SHOW_NAME_LEN);
+        wr_u32(&w, valid ? s.duration_ms : 0);
+        wr_u8(&w, valid && s.loop);
+        wr_u8(&w, valid ? (uint8_t)s.n_tracks : 0);
+    }
+    send(PROTO_SHOW_INFO, seq, &w);
+}
+
+// Flash writes pause core 1: only with every axis at rest.
+static bool flash_write_ok(void) {
+    control_snapshot_t s;
+    control_snapshot(&s);
+    return player_slot() < 0 && (!control_outputs_on || s.settled_mask == CONTROL_ALL_AXES);
+}
+
+static bool store(uint32_t slot, const uint8_t *data, uint32_t len) {
+    if (!flash_write_ok())
+        return false;
+    control_flash_busy = true;
+    bool ok = show_store_write(slot, data, len);
+    control_flash_busy = false;
+    return ok;
+}
+
 // --- requests -----------------------------------------------------------------------
 
 static void handle_frame(const uint8_t *buf, uint32_t len) {
@@ -335,6 +379,53 @@ static void handle_frame(const uint8_t *buf, uint32_t len) {
         r.ok &= c.drive.amp_low >= 0.0f && c.drive.amp_low <= 1.0f && c.drive.amp_high >= 0.0f &&
                 c.drive.amp_high <= 1.0f && c.drive.amp_hold >= 0.0f && c.drive.amp_hold <= 1.0f;
         break;
+    case PROTO_SHOW_BEGIN:
+        upload_slot = rd_u8(&r);
+        upload_len = rd_u32(&r);
+        r.ok &= upload_slot < SHOW_SLOTS && upload_len <= SHOW_MAX_SIZE;
+        if (r.ok)
+            memset(upload, 0xff, sizeof upload);
+        post_cmd = false;
+        break;
+    case PROTO_SHOW_DATA: {
+        uint32_t off = rd_u32(&r);
+        r.ok &= upload_slot < SHOW_SLOTS && off + (uint32_t)r.left <= upload_len;
+        if (r.ok) {
+            memcpy(upload + off, r.p, (size_t)r.left);
+            r.left = 0;
+        }
+        post_cmd = false;
+        break;
+    }
+    case PROTO_SHOW_END: {
+        show_t s;
+        r.ok &= upload_slot < SHOW_SLOTS &&
+                show_parse(&s, upload, upload_len, NUM_MOTORS, LED_CHAIN) == NULL &&
+                store(upload_slot, upload, upload_len);
+        upload_slot = SHOW_SLOTS;
+        post_cmd = false;
+        break;
+    }
+    case PROTO_SHOW_RUN: {
+        uint8_t slot = rd_u8(&r);
+        r.ok &= r.left == 0 && player_start(slot) == NULL;
+        app_set_stress(false);
+        post_cmd = false;
+        break;
+    }
+    case PROTO_SHOW_STOP:
+        player_stop();
+        post_cmd = false;
+        break;
+    case PROTO_SHOW_LIST:
+        send_show_info(seq);
+        return;
+    case PROTO_SHOW_ERASE: {
+        uint8_t slot = rd_u8(&r);
+        r.ok &= slot < SHOW_SLOTS && r.left == 0 && store(slot, upload, 0);
+        post_cmd = false;
+        break;
+    }
     case PROTO_TELEMETRY: {
         uint16_t hz = rd_u16(&r);
         uint16_t axes = rd_u16(&r);

@@ -10,6 +10,7 @@
 #define LED_AXIS_FIRST  1
 #define LED_AXIS_COUNT  10
 #define LED_COUNT       (LED_AXIS_FIRST + LED_AXIS_COUNT)
+#define LED_CHAIN       20   // pixels driven (shows can use the ones past LED_COUNT)
 
 void led_init(void);
 

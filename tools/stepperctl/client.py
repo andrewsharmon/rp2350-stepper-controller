@@ -250,6 +250,37 @@ class Client:
         """Write limits, profiles and drive settings to flash (axes at rest)."""
         return self.command(P.CONFIG_SAVE)
 
+    # --- shows (slots 0-3) --------------------------------------------------------
+
+    def show_upload(self, slot, blob, chunk=200):
+        """Upload a compiled show (stepperctl.show.compile_show) to a slot.
+        Writing flash needs every axis at rest and no show running."""
+        self.command(P.SHOW_BEGIN, struct.pack("<BI", slot, len(blob)))
+        for off in range(0, len(blob), chunk):
+            self.command(P.SHOW_DATA, struct.pack("<I", off) + blob[off:off + chunk])
+        old_timeout, self.timeout = self.timeout, 3.0  # erasing 16 KB of flash takes a while
+        try:
+            return self.command(P.SHOW_END)
+        finally:
+            self.timeout = old_timeout
+
+    def show_run(self, slot):
+        return self.command(P.SHOW_RUN, struct.pack("<B", slot))
+
+    def show_stop(self):
+        return self.command(P.SHOW_STOP)
+
+    def show_erase(self, slot):
+        old_timeout, self.timeout = self.timeout, 3.0
+        try:
+            return self.command(P.SHOW_ERASE, struct.pack("<B", slot))
+        finally:
+            self.timeout = old_timeout
+
+    def show_list(self):
+        rtype, p = self.request(P.SHOW_LIST, retries=self.retries)
+        return P.parse_show_info(p)
+
     def telemetry(self, rate_hz, axes="*", fields=("pos", "vel"), sys_fields=(), events=False):
         mask = self._mask(axes)
         f = sum(P.TF[n] for n in fields)
