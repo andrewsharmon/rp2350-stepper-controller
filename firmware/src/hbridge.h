@@ -1,5 +1,6 @@
 #pragma once
 
+#include <stdbool.h>
 #include <stdint.h>
 #include "hardware/pio.h"
 
@@ -17,6 +18,7 @@ typedef struct {
     PIO pio;
     uint sm;
     uint pin_base;
+    bool has_pins;
     uint dma_ch;
     uint32_t *ring;
     uint32_t wr;  // next word index to write (mod HBRIDGE_RING_WORDS)
@@ -24,8 +26,9 @@ typedef struct {
 
 // Configure motor `index` (0..HBRIDGE_MAX_MOTORS-1) on GPIO 4*index..4*index+3
 // and its DMA ring, pre-filled with brake. Outputs stay idle until
-// hbridge_start(). Motors 0-3 use PIO0, 4-7 PIO1, 8-9 PIO2 (GPIO base 16).
-void hbridge_init(hbridge_t *hb, uint index);
+// hbridge_start(). Motors 0-3 use PIO0, 4-7 PIO1, 8-9 PIO2 (GPIO base 16 on
+// 48-GPIO parts). Without pins the SM and DMA run but drive nothing.
+void hbridge_init(hbridge_t *hb, uint index, bool has_pins);
 
 // Start the state machines of all `count` motors, in sync per PIO block.
 void hbridge_start(hbridge_t *hbs, uint count);
@@ -44,6 +47,10 @@ uint32_t hbridge_free_periods(const hbridge_t *hb);
 // xIN1 high, negative drives xIN2 high; the off-time is brake (slow decay).
 // Call only when hbridge_free_periods() > 0.
 void hbridge_write_period(hbridge_t *hb, int32_t duty_a, int32_t duty_b);
+
+// Re-arm motors stopped by hbridge_safe_off() (ring refilled with brake) and
+// start them in sync. Only call from the core that writes the rings.
+void hbridge_restart(hbridge_t *hbs, uint count);
 
 // Stop DMA and PIO for this motor and hand the pins to SIO, driven low
 // (coast). Safe to call from either core; used when the producer stalls,

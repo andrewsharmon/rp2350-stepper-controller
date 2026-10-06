@@ -1,6 +1,12 @@
 #include "hbridge_encode.h"
 
 #include <stdlib.h>
+#if __has_include("pico.h")
+#include "pico.h"
+#define HOT_FUNC(f) __time_critical_func(f)  // runs every PWM period: keep in RAM
+#else
+#define HOT_FUNC(f) f
+#endif
 
 #define PAT_A_FWD   0x1u
 #define PAT_A_REV   0x2u
@@ -13,7 +19,7 @@ static uint32_t segment(uint32_t pattern, int32_t len) {
     return pattern | ((uint32_t)len << 4);
 }
 
-void hbridge_encode_period(int32_t span, int32_t duty_a, int32_t duty_b, uint32_t *w0, uint32_t *w1) {
+void HOT_FUNC(hbridge_encode_period)(int32_t span, int32_t duty_a, int32_t duty_b, uint32_t *w0, uint32_t *w1) {
     int32_t ma = abs(duty_a), mb = abs(duty_b);
     if (ma > span) ma = span;
     if (mb > span) mb = span;

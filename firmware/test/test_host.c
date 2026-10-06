@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -12,6 +12,7 @@
 
 #include "hbridge_encode.h"
 #include "microstep.h"
+#include "ladder.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
 #define SPAN (PERIOD_CLOCKS - 4 * HBRIDGE_SEGMENT_OVERHEAD)
@@ -122,10 +123,69 @@ static void test_microstep(void) {
     CHECK(fabs(got - want) / want < 0.01, "dithered average %f vs %f", got, want);
 }
 
+static void test_ladder(void) {
+    // Nominal levels from the resistor values, +/- 5%.
+    struct { uint32_t mv; ladder_level_t want; } levels[] = {
+        {3300, LADDER_ESTOP}, {3135, LADDER_ESTOP},
+        {2200, LADDER_IDLE}, {2090, LADDER_IDLE}, {2310, LADDER_IDLE},
+        {1320, LADDER_BTN1}, {1254, LADDER_BTN1}, {1386, LADDER_BTN1},
+        {730, LADDER_BTN2}, {694, LADDER_BTN2}, {767, LADDER_BTN2},
+        {600, LADDER_BTN2},  // both buttons: reads as Btn2
+        {0, LADDER_FAULT}, {120, LADDER_FAULT},
+    };
+    for (unsigned i = 0; i < sizeof levels / sizeof levels[0]; i++)
+        CHECK(ladder_classify(levels[i].mv) == levels[i].want, "%u mV -> %s",
+              levels[i].mv, ladder_level_name(ladder_classify(levels[i].mv)));
+
+    ladder_t l;
+    uint32_t t = 0;
+    ladder_reset(&l, t);
+
+    // A single noisy stop sample must not trip.
+    CHECK(!ladder_update(&l, 3300, t += 10), "one-sample spike tripped");
+    CHECK(!ladder_update(&l, 2200, t += 10), "tripped on idle");
+    CHECK(!l.stop_latched, "spike latched");
+
+    // A sustained stop trips on the LADDER_STOP_SAMPLES-th sample (<100 us).
+    uint32_t start = t;
+    int tripped = 0;
+    for (int k = 0; k < 10 && !tripped; k++)
+        tripped = ladder_update(&l, 3300, t += 10);
+    CHECK(tripped && t - start <= 100, "e-stop latency %u us", t - start);
+    CHECK(l.stop_cause == LADDER_ESTOP, "stop cause %s", ladder_level_name(l.stop_cause));
+
+    // Cannot clear while still open; can once the line is back to idle.
+    CHECK(!ladder_clear_stop(&l), "cleared while e-stop open");
+    ladder_update(&l, 2200, t += 10);
+    CHECK(ladder_clear_stop(&l), "could not clear at idle");
+
+    // Fault also latches.
+    for (int k = 0; k < 3; k++)
+        ladder_update(&l, 0, t += 10);
+    CHECK(l.stop_latched && l.stop_cause == LADDER_FAULT, "fault not latched");
+    ladder_update(&l, 2200, t += 10);
+    ladder_clear_stop(&l);
+
+    // Buttons: a 5 ms blip is ignored; a 30 ms press counts once.
+    for (uint32_t end = t + 5000; t < end; t += 10)
+        ladder_update(&l, 1320, t);
+    for (uint32_t end = t + 50000; t < end; t += 10)
+        ladder_update(&l, 2200, t);
+    CHECK(l.btn1_presses == 0, "blip counted as press");
+    for (uint32_t end = t + 30000; t < end; t += 10)
+        ladder_update(&l, 730, t);
+    for (uint32_t end = t + 30000; t < end; t += 10)
+        ladder_update(&l, 2200, t);
+    CHECK(l.btn2_presses == 1 && l.btn1_presses == 0, "btn2 presses %u, btn1 %u",
+          l.btn2_presses, l.btn1_presses);
+    CHECK(!l.stop_latched, "button latched a stop");
+}
+
 int main(void) {
     test_encoder();
     test_phase_inc();
     test_microstep();
+    test_ladder();
     if (failures) {
         printf("%d check(s) failed\n", failures);
         return 1;

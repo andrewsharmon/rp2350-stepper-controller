@@ -23,29 +23,17 @@ static uint32_t rings[HBRIDGE_MAX_MOTORS][HBRIDGE_RING_WORDS]
 static int pio_offset[3] = {-1, -1, -1};
 static int32_t period_clocks;
 
-static uint32_t read_index(const hbridge_t *hb) {
+static inline uint32_t read_index(const hbridge_t *hb) {
     uintptr_t addr = (uintptr_t)dma_channel_hw_addr(hb->dma_ch)->read_addr;
     return (uint32_t)((addr - (uintptr_t)hb->ring) / 4) & (HBRIDGE_RING_WORDS - 1);
 }
 
-void hbridge_init(hbridge_t *hb, uint index) {
-    uint block = index / 4;
-    PIO pio = block == 0 ? pio0 : block == 1 ? pio1 : pio2;
-
-    period_clocks = (int32_t)(clock_get_hz(clk_sys) / HBRIDGE_CLKDIV / HBRIDGE_PWM_HZ);
-
-    if (pio_offset[block] < 0) {
-        if (block == 2)
-            pio_set_gpio_base(pio, 16);
-        pio_offset[block] = pio_add_program(pio, &hbridge_pwm_program);
-    }
-
-    hb->pio = pio;
-    hb->sm = index % 4;
-    hb->pin_base = 4 * index;
-    hb->ring = rings[index];
-    pio_sm_claim(pio, hb->sm);
-    hbridge_pwm_program_init(pio, hb->sm, (uint)pio_offset[block], hb->pin_base, HBRIDGE_CLKDIV);
+// Reset the (disabled) SM, fill the ring with brake and start its DMA. The
+// SM is left disabled with its FIFO full; hbridge_start() enables it.
+static void arm(hbridge_t *hb) {
+    PIO pio = hb->pio;
+    hbridge_pwm_program_init(pio, hb->sm, (uint)pio_offset[pio_get_index(pio)], hb->pin_base,
+                             hb->has_pins ? 4 : 0, HBRIDGE_CLKDIV);
 
     uint32_t w0, w1;
     hbridge_encode_period(hbridge_max_duty(), 0, 0, &w0, &w1);
@@ -54,7 +42,6 @@ void hbridge_init(hbridge_t *hb, uint index) {
         hb->ring[i + 1] = w1;
     }
 
-    hb->dma_ch = (uint)dma_claim_unused_channel(true);
     dma_channel_config c = dma_channel_get_default_config(hb->dma_ch);
     channel_config_set_transfer_data_size(&c, DMA_SIZE_32);
     channel_config_set_read_increment(&c, true);
@@ -78,6 +65,36 @@ void hbridge_init(hbridge_t *hb, uint index) {
     hb->wr = read_index(hb) & ~1u;
 }
 
+void hbridge_init(hbridge_t *hb, uint index, bool has_pins) {
+    uint block = index / 4;
+    PIO pio = block == 0 ? pio0 : block == 1 ? pio1 : pio2;
+
+    period_clocks = (int32_t)(clock_get_hz(clk_sys) / HBRIDGE_CLKDIV / HBRIDGE_PWM_HZ);
+
+    if (pio_offset[block] < 0) {
+#if NUM_BANK0_GPIOS > 32
+        if (block == 2)
+            pio_set_gpio_base(pio, 16);
+#endif
+        pio_offset[block] = pio_add_program(pio, &hbridge_pwm_program);
+    }
+
+    hb->pio = pio;
+    hb->sm = index % 4;
+    hb->pin_base = 4 * index;
+    hb->has_pins = has_pins;
+    hb->ring = rings[index];
+    pio_sm_claim(pio, hb->sm);
+    hb->dma_ch = (uint)dma_claim_unused_channel(true);
+    arm(hb);
+}
+
+void hbridge_restart(hbridge_t *hbs, uint count) {
+    for (uint i = 0; i < count; i++)
+        arm(&hbs[i]);
+    hbridge_start(hbs, count);
+}
+
 void hbridge_start(hbridge_t *hbs, uint count) {
     uint32_t masks[3] = {0, 0, 0};
     for (uint i = 0; i < count; i++)
@@ -96,7 +113,7 @@ int32_t hbridge_min_duty(void) {
     return (int32_t)((sm_hz * HBRIDGE_MIN_PULSE_NS + 999999999) / 1000000000);
 }
 
-uint32_t hbridge_free_periods(const hbridge_t *hb) {
+uint32_t __time_critical_func(hbridge_free_periods)(const hbridge_t *hb) {
     // Words from the DMA read position up to wr are queued. Keep one period
     // of slack so a full ring (wr just behind the reader) never looks empty.
     uint32_t pending = (hb->wr - read_index(hb)) & (HBRIDGE_RING_WORDS - 1);
@@ -105,16 +122,16 @@ uint32_t hbridge_free_periods(const hbridge_t *hb) {
     return (HBRIDGE_RING_WORDS - 2 - pending) / 2;
 }
 
-void hbridge_write_period(hbridge_t *hb, int32_t duty_a, int32_t duty_b) {
+void __time_critical_func(hbridge_write_period)(hbridge_t *hb, int32_t duty_a, int32_t duty_b) {
     uint32_t w0, w1;
-    hbridge_encode_period(hbridge_max_duty(), duty_a, duty_b, &w0, &w1);
+    hbridge_encode_period(period_clocks - 4 * HBRIDGE_SEGMENT_OVERHEAD, duty_a, duty_b, &w0, &w1);
     hb->ring[hb->wr] = w0;
     hb->ring[hb->wr + 1] = w1;
     hb->wr = (hb->wr + 2) & (HBRIDGE_RING_WORDS - 1);
 }
 
 void hbridge_safe_off(hbridge_t *hb) {
-    for (uint i = 0; i < 4; i++) {
+    for (uint i = 0; hb->has_pins && i < 4; i++) {
         gpio_put(hb->pin_base + i, 0);
         gpio_set_dir(hb->pin_base + i, GPIO_OUT);
         gpio_set_function(hb->pin_base + i, GPIO_FUNC_SIO);
