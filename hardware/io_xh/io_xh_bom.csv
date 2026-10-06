@@ -21,7 +21,7 @@
 "J19","M9","Connector_JST:JST_XH_B5B-XH-A_1x05_P2.50mm_Vertical","1","B5B-XH-A","C157991",""
 "J20","M10","Connector_JST:JST_XH_B5B-XH-A_1x05_P2.50mm_Vertical","1","B5B-XH-A","C157991",""
 "JP1","STRIP_SHARED","Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm","1","","","cut when strip has its own supply on LED PWR"
-"JP2","NO_ESTOP","Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm","1","","","cut when an NC e-stop is fitted"
+"JP2","NO_ESTOP","Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm","1","","","MUST cut when an NC e-stop is fitted, or the e-stop does nothing; silkscreen this"
 "R1","33","Resistor_SMD:R_0402_1005Metric","1","","",""
 "R2","20k 1%","Resistor_SMD:R_0402_1005Metric","1","","",""
 "R3,R5","10k 1%","Resistor_SMD:R_0402_1005Metric","2","","","board-ID level; table TBD"

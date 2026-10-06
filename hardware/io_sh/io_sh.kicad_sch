@@ -5410,7 +5410,7 @@
 				)
 			)
 		)
-		(property "Note" "cut when an NC e-stop is fitted"
+		(property "Note" "MUST cut when an NC e-stop is fitted, or the e-stop does nothing; silkscreen this"
 			(at 48.26 121.92 0)
 			(hide yes)
 			(effects

@@ -28,15 +28,18 @@ connectors at opposite edges. No screws: the enclosure captures the stack.
 
 - MCU: **RP2354B** (QFN-80, 48 GPIO, 2 MB in-package flash). Run the ARM cores (FPU).
 - 12 MHz crystal, core-regulator inductor and decoupling per the RP2350 hardware design guide.
+  - Crystal: Abracon ABM8-272-T3 (10 pF load, ESR <= 50 ohm). The guide's 15 pF / 1 k values are tuned for it; other crystals need retuning and testing.
+  - Inductor: Abracon AOTA-B201610S3R3-101-T has a polarity dot. Lay it out in the same orientation as the Pico 2.
 - USB-C receptacle with THT shell legs. The enclosure supports the receptacle so plug forces never reach the BTBs.
 - CC1 / CC2: 5.1 k pull-downs, also routed to ADC (GPIO40/41) to read the source current advertisement.
 - Power path: `VBUS -> PTC (~1.5 A hold, 1812) -> low-Vf Schottky -> V5 bus -> BTB`.
 - 3.3 V LDO (ME6211 class, <= 6 V input) fed from the V5 bus.
 - No soft-start. Keep total capacitance on V5 (all tiers) at about 30-40 uF or less.
 - 2x Qwiic (JST-SH 4-pin) on I2C1:
-  - Qwiic 3.3 V diode-ORed onto 3V3 through a BAT54WS (C5251553).
-  - Solder jumpers for pull-ups (2.2-4.7 k) and for power direction.
+  - The board is not powered from Qwiic. The ME6211 conducts from VOUT back to VIN, so a Qwiic-fed 3V3 would back-power the V5 bus (drivers, LEDs).
+  - Solder jumpers for pull-ups (2.2-4.7 k) and for supplying 3V3 to downstream Qwiic devices.
 - WS2812-class addressable LED on GPIO45. Its DOUT continues down the stack as LED_DATA.
+  - Powered from V5 (needs >= 3.7 V). The 3.3 V data goes through a 74AHCT1G125 on V5 to meet VIH = 0.7 VDD.
 - Buttons:
   - BOOTSEL (also readable at runtime).
   - Btn1 and Btn2 on the analog ladder (see below).
@@ -49,9 +52,10 @@ connectors at opposite edges. No screws: the enclosure captures the stack.
   - VM 2.7-15 V, UVLO <= 2.5 V, 1.0 A RMS. Inputs have 100 k pull-downs.
   - Second source: JSMSEMI DRV8833RTYR / JSM8833RTYR (same QFN-16 4 x 4). Verify its pinout against TI DRV8833RTY before relying on it.
 - Passives per chip:
-  - AISEN / BISEN: 0.68-0.82 ohm to ground. This is a fault-only current cap (I = 0.2 V / R, Vtrip 160-240 mV). Give it a separate return to the star ground.
+  - AISEN / BISEN: 0.68-0.82 ohm to ground. Above I = 0.2 V / R (Vtrip 160-240 mV) the chip chops the current in slow decay; it does not report a fault. With 0.82 ohm that is 0.2-0.29 A. Give it a separate return to the star ground.
   - VCP: 0.1 uF to VM.
   - VINT: 1 uF.
+  - These are the AT8833 datasheet values. TI's DRV8833 uses 0.01 uF and 2.2 uF, so don't copy from it.
   - VM: 1-2.2 uF ceramic at the pin.
 - Shared bulk: 2-4x 10 uF 0805 spread over the V5 pour.
 - nSLEEP: pulled high through 20-75 k (always awake, <= 3.5 mA idle per chip).
@@ -110,7 +114,7 @@ AT8833CQ QFN-16 pinout: 1 AISEN, 2 AOUT2, 3 BOUT2, 4 BISEN, 5 BOUT1, 6 nFAULT,
 | 0-39 | Motor n (1-10) on GPIO 4(n-1)..4(n-1)+3 = AIN1 AIN2 BIN1 BIN2 |
 | 40 | USB-C CC1 (ADC0) |
 | 41 | USB-C CC2 (ADC1) |
-| 42 | VMOTOR_SENSE, 1:5 (ADC2). Also detects external power |
+| 42 | VMOTOR_SENSE, 1:5 (ADC2). Can't tell external power from USB (both feed V5 through Schottkys) |
 | 43 | Tier-3 board ID (ADC3) |
 | 44 | Ladder (ADC4) |
 | 45 | WS2812 data |
@@ -154,6 +158,8 @@ Use 1% resistors. Thresholds sit midway between the levels; debounce over 2-3 sa
 - PWM frequency is about 20 kHz. The AT8833 input deglitch (about 450 ns) sets a minimum pulse of about 0.5 us, roughly 1% duty. Firmware dithers duties below that.
 - Wait about 100 ms after power-up before energizing motors (V5 settling, no soft-start).
 - USB budget comes from CC; brownout guard from VMOTOR_SENSE.
+- AT8833 inputs read >= 2 V as high and have 100 k pull-downs. After a reset, a GPIO that was high can sit near 2 V (RP2350-E9), which could turn a bridge on while nSLEEP is high. Not handled yet: firmware should drive the motor pins low before a reset it triggers, but a watchdog reset can't be caught that way, so a hardware fix (e.g. stronger pull-downs, <= ~8.2 k, if the GPIO drive allows) is still open.
+- Tier 3: the NO_ESTOP jumper ships bridged. It must be cut when an e-stop is fitted, or the e-stop does nothing. Mark this on the silkscreen.
 
 ## Schematics and BOM
 
@@ -178,4 +184,7 @@ Part data:
 Open items:
 
 - Board-ID table.
+- V5 capacitance is about 73 uF nominal, over the 30-40 uF target (and USB's 10 uF at attach). The AT8833 datasheet asks for >= 10 uF per chip, so the likely fix is a slow-start load switch on V5 rather than fewer capacitors.
+- Ladder: a held button masks an open e-stop (e-stop open + Btn1 reads 1.65 V = Btn1). Firmware should only accept a button after the idle level, or the e-stop moves off the ladder.
+- ABM8-272-T3 LCSC number not checked yet.
 - PCB layout.

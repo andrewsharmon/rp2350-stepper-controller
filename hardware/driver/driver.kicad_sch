@@ -2097,7 +2097,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 116.84 40.64 0)
 			(hide yes)
 			(effects
@@ -2178,7 +2178,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 167.64 40.64 0)
 			(hide yes)
 			(effects
@@ -2786,7 +2786,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 492.76 40.64 0)
 			(hide yes)
 			(effects
@@ -2867,7 +2867,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 43.18 86.36 0)
 			(hide yes)
 			(effects
@@ -3475,7 +3475,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 368.3 86.36 0)
 			(hide yes)
 			(effects
@@ -3556,7 +3556,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 416.56 86.36 0)
 			(hide yes)
 			(effects
@@ -4164,7 +4164,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 218.44 129.54 0)
 			(hide yes)
 			(effects
@@ -4245,7 +4245,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 266.7 129.54 0)
 			(hide yes)
 			(effects
@@ -4853,7 +4853,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 116.84 175.26 0)
 			(hide yes)
 			(effects
@@ -4934,7 +4934,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 167.64 175.26 0)
 			(hide yes)
 			(effects
@@ -5542,7 +5542,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 492.76 175.26 0)
 			(hide yes)
 			(effects
@@ -5623,7 +5623,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 43.18 220.98 0)
 			(hide yes)
 			(effects
@@ -6231,7 +6231,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 368.3 220.98 0)
 			(hide yes)
 			(effects
@@ -6312,7 +6312,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 416.56 220.98 0)
 			(hide yes)
 			(effects
@@ -6920,7 +6920,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 218.44 264.16 0)
 			(hide yes)
 			(effects
@@ -7001,7 +7001,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 266.7 264.16 0)
 			(hide yes)
 			(effects
@@ -7609,7 +7609,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 116.84 309.88 0)
 			(hide yes)
 			(effects
@@ -7690,7 +7690,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 167.64 309.88 0)
 			(hide yes)
 			(effects
@@ -8298,7 +8298,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 492.76 309.88 0)
 			(hide yes)
 			(effects
@@ -8379,7 +8379,7 @@
 				)
 			)
 		)
-		(property "Note" "current cap ~0.2-0.29 A; Kelvin return"
+		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 			(at 43.18 353.06 0)
 			(hide yes)
 			(effects

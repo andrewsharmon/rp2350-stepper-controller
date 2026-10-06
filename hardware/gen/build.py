@@ -110,8 +110,10 @@ def controller():
     C(s, "4.7u", "VREG_AVDD", "GND")
 
     # Crystal.
+    # The design guide's 15 pF / 1k values are tuned for this crystal (10 pF load, ESR <= 50 ohm).
     s.add("Device:Crystal_GND24", "Y", "12MHz", "Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm",
-          {"1": "XIN", "3": "XTAL_OUT", "2": "GND", "4": "GND"}, LCSC="C9002", MPN="X322512MSB4SI")
+          {"1": "XIN", "3": "XTAL_OUT", "2": "GND", "4": "GND"}, MPN="ABM8-272-T3",
+          Note="Abracon, per RP2350 design guide; other crystals need retuning and testing")
     C(s, "15p", "XIN", "GND")
     C(s, "15p", "XTAL_OUT", "GND")
     R(s, "1k", "XOUT", "XTAL_OUT")
@@ -139,12 +141,11 @@ def controller():
     C(s, "1u", "V5", "GND")
     C(s, "1u", "+3V3", "GND")
 
-    # Qwiic x2: logic power in via Schottky, optional supply out via jumper.
+    # Qwiic x2: optional supply out via jumper. No power in: the ME6211 conducts
+    # from VOUT back to VIN, so a Qwiic-fed 3V3 would back-power the V5 bus.
     for _ in range(2):
         s.add("Connector_Generic:Conn_01x04", "J", "Qwiic", "Connector_JST:JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical",
               {"1": "GND", "2": "QWIIC_3V3", "3": "SDA", "4": "SCL"}, LCSC="C160390", MPN="BM04B-SRSS-TB")
-    s.add("Device:D_Schottky", "D", "BAT54WS", "Diode_SMD:D_SOD-323", {"2": "QWIIC_3V3", "1": "+3V3"},
-          LCSC="C5251553", MPN="BAT54WS", Note="MDD; powers board logic from Qwiic")
     s.add("Jumper:SolderJumper_2_Open", "JP", "QWIIC_SUPPLY", JP_OPEN, {"1": "+3V3", "2": "QWIIC_3V3"},
           Note="bridge to power downstream Qwiic devices")
     R(s, "4.7k", "SDA", "I2C_PU")
@@ -170,12 +171,15 @@ def controller():
     # Board-ID pull-up: tier 3 provides the resistor to GND (none fitted -> 3.3 V).
     R(s, "10k 1%", "+3V3", "BOARD_ID")
 
-    # Status LED, first in the chain; DOUT continues down the stack.
+    # Status LED, first in the chain; DOUT continues down the stack. Powered from V5
+    # (>= 3.7 V needed; a diode drop would leave ~3.5 V on a 4.75 V USB supply), so
+    # the 3.3 V data goes through an AHCT buffer to meet VIH = 0.7 VDD.
+    s.add("74xGxx:74AHCT1G125", "U", "74AHCT1G125", SOT23_5,
+          {"1": "GND", "2": "LED_DIN", "3": "GND", "4": "LED_DIN_5V", "5": "V5"}, LCSC="C7484", MPN="SN74AHCT1G125DBVR")
+    C(s, "100n", "V5", "GND")
     s.add("LED:WS2812B-2020", "D", "WS2812B-2020", "LED_SMD:LED_WS2812B-2020_PLCC4_2.0x2.0mm",
-          {"VDD": "LED_VDD", "VSS": "GND", "DIN": "LED_DIN", "DOUT": "LED_DATA"}, LCSC="C965555", MPN="WS2812B-2020")
-    s.add("Device:D", "D", "1N4148W", "Diode_SMD:D_SOD-123", {"2": "V5", "1": "LED_VDD"},
-          LCSC="C81598", MPN="1N4148W", Note="drops LED VDD so 3.3 V data meets VIH")
-    C(s, "100n", "LED_VDD", "GND")
+          {"VDD": "V5", "VSS": "GND", "DIN": "LED_DIN_5V", "DOUT": "LED_DATA"}, LCSC="C965555", MPN="WS2812B-2020")
+    C(s, "100n", "V5", "GND")
 
     # Debug pads.
     for net in ["SWCLK", "SWDIO", "RUN", "GND", "+3V3"]:
@@ -184,7 +188,7 @@ def controller():
     add_btb(s, "J10", btb_a("in", True), BTB_HEADER, "connector A, board underside")
     add_btb(s, "J11", btb_b("in", True), BTB_HEADER, "connector B, board underside; offset placement keys stack")
 
-    flags(s, "GND", "V5", "+1V1", "VREG_AVDD", "VBUS", "LED_VDD", "QWIIC_3V3")
+    flags(s, "GND", "V5", "+1V1", "VREG_AVDD", "VBUS")
     return s
 
 
@@ -204,8 +208,8 @@ def driver():
         s.add("Driver_Motor:DRV8833RTY", "U", "AT8833CQ", "Package_DFN_QFN:QFN-16-1EP_4x4mm_P0.65mm_EP2.1x2.1mm",
               nets, ref=u, LCSC="C5120769", MPN="AT8833CQ",
               Note="DRV8833RTY pinout; 2nd source JSMSEMI DRV8833RTYR-JSM C55566425")
-        R(s, "0.82", f"{u}_AISEN", "GND", Note="current cap ~0.2-0.29 A; Kelvin return")
-        R(s, "0.82", f"{u}_BISEN", "GND", Note="current cap ~0.2-0.29 A; Kelvin return")
+        R(s, "0.82", f"{u}_AISEN", "GND", Note="chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return")
+        R(s, "0.82", f"{u}_BISEN", "GND", Note="chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return")
         C(s, "1u", f"{u}_VINT", "GND")
         flags(s, f"{u}_VINT")  # internal regulator output, typed power_in in the symbol
         C(s, "100n", f"{u}_VCP", "V5")
@@ -265,7 +269,7 @@ def io_board(name, title, motor_conn, board_id_r):
     s.add("Connector_Generic:Conn_01x02", "J", "E-STOP", "Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical",
           {"1": "LADDER", "2": "ESTOP_RET"}, LCSC="C131337", MPN="B2B-PH-K-S")
     s.add("Jumper:SolderJumper_2_Bridged", "JP", "NO_ESTOP", JP_BRIDGED, {"1": "LADDER", "2": "ESTOP_RET"},
-          Note="cut when an NC e-stop is fitted")
+          Note="MUST cut when an NC e-stop is fitted, or the e-stop does nothing; silkscreen this")
     R(s, "20k 1%", "ESTOP_RET", "GND")
 
     # External panel buttons in parallel with the onboard ones.
