@@ -1,13 +1,15 @@
 // Milestone 2 bring-up: sine microstepping on NUM_MOTORS motors, with a
-// constant-acceleration ramp to the commanded speed. Each motor's PWM is streamed to its PIO state machine by DMA from
-// a ring buffer; core 1 keeps the rings topped up, core 0 takes single-key
+// constant-acceleration ramp to the commanded speed and speed-dependent
+// drive amplitude. Each motor's PWM is streamed to its PIO state machine by
+// DMA from a ring buffer; core 1 keeps the rings topped up, core 0 takes single-key
 // commands over USB CDC and watches core 1.
 //
 //   123<Enter>  set target speed (full steps/s; keeps direction)
 //   + / -   target speed +/- 10%             r   reverse (ramps through 0)
 //   s       stop (ramp to 0)                 g   go (back to last speed)
 //   > / <   double / halve acceleration
-//   ] / [   amplitude +/- 5%                 0   amplitude 0 (brake)
+//   ] / [   manual amplitude +/- 5%          0   manual amplitude 0 (brake)
+//   a       automatic amplitude (speed curve + standstill hold)
 //   ?       print status                     L   dump sine table
 //   W       watchdog test: stall core 1 (outputs must drop to coast)
 //   X       reboot
@@ -28,6 +30,19 @@
 // Each ring holds 3.2 ms; trip well before a stalled producer lets it wrap.
 #define WATCHDOG_US 1500
 
+// Automatic drive amplitude (fraction of full PWM span), tuned on the bench
+// 8 mm stepper at 5 V: flat up to AMP_LOW_SPEED, linear up to the cap at
+// AMP_HIGH_SPEED to make up for back-EMF. Drops to AMP_HOLD after the motor
+// has been stopped for HOLD_DELAY_MS, since standstill heats the coils most.
+#define AMP_LOW          0.40f
+#define AMP_LOW_SPEED    300.0f   // full steps/s
+#define AMP_HIGH         0.60f
+#define AMP_HIGH_SPEED   1600.0f
+#define AMP_HOLD         0.25f
+#define HOLD_DELAY_MS    500
+// Amplitude slew limit, so run/hold changes don't jerk the rotor.
+#define AMP_SLEW_PER_SEC 2.0f
+
 static hbridge_t motors[NUM_MOTORS];
 static microstep_t steppers[NUM_MOTORS];
 
@@ -35,15 +50,30 @@ static volatile float target_speed = 100.0f;   // full steps/s, signed
 static volatile float accel = 2000.0f;         // full steps/s^2
 static volatile float current_speed;           // written by core 1 only
 static volatile bool stall_core1;
-static volatile float amplitude = 0.3f;
+static volatile float manual_amp = -1.0f;      // < 0: automatic
+static volatile float current_amp;             // written by core 1 only
+static volatile bool holding;                  // written by core 1 only
 static volatile bool energized = false;
 static volatile uint32_t core1_heartbeat;
+
+static float auto_amplitude(float speed) {
+    float v = speed < 0.0f ? -speed : speed;
+    if (v <= AMP_LOW_SPEED)
+        return AMP_LOW;
+    if (v >= AMP_HIGH_SPEED)
+        return AMP_HIGH;
+    return AMP_LOW + (AMP_HIGH - AMP_LOW) * (v - AMP_LOW_SPEED) / (AMP_HIGH_SPEED - AMP_LOW_SPEED);
+}
 
 static void core1_main(void) {
     int32_t max_duty = hbridge_max_duty();
     int32_t min_duty = hbridge_min_duty();
 
     float speed = 0.0f;
+    float amp = 0.0f;
+    uint32_t stopped_periods = 0;
+    const uint32_t hold_periods = HOLD_DELAY_MS * (HBRIDGE_PWM_HZ / 1000);
+    const float amp_step = AMP_SLEW_PER_SEC / (float)HBRIDGE_PWM_HZ;
 
     for (;;) {
         while (stall_core1)
@@ -57,7 +87,7 @@ static void core1_main(void) {
                 n = f;
         }
 
-        float amp = energized ? amplitude : 0.0f;
+        float manual = manual_amp;
         float target = target_speed;
         float dv = accel / (float)HBRIDGE_PWM_HZ;  // speed change per period
 
@@ -68,6 +98,19 @@ static void core1_main(void) {
             else if (speed > target)
                 speed = speed - dv < target ? target : speed - dv;
             uint32_t inc = microstep_phase_inc(speed, HBRIDGE_PWM_HZ);
+
+            if (speed == 0.0f && target == 0.0f)
+                stopped_periods = stopped_periods < hold_periods ? stopped_periods + 1 : hold_periods;
+            else
+                stopped_periods = 0;
+            float want = !energized ? 0.0f
+                       : manual >= 0.0f ? manual
+                       : stopped_periods >= hold_periods ? AMP_HOLD
+                       : auto_amplitude(speed);
+            if (amp < want)
+                amp = amp + amp_step > want ? want : amp + amp_step;
+            else if (amp > want)
+                amp = amp - amp_step < want ? want : amp - amp_step;
             for (int i = 0; i < NUM_MOTORS; i++) {
                 int32_t a, b;
                 steppers[i].amplitude = amp;
@@ -77,12 +120,15 @@ static void core1_main(void) {
             }
         }
         current_speed = speed;
+        current_amp = amp;
+        holding = stopped_periods >= hold_periods && manual < 0.0f;
     }
 }
 
 static void print_status(void) {
-    printf("target %.1f full steps/s (now %.1f), accel %.0f steps/s^2, amplitude %.2f\n",
-           (double)target_speed, (double)current_speed, (double)accel, (double)amplitude);
+    printf("target %.1f full steps/s (now %.1f), accel %.0f steps/s^2, amplitude %.2f (%s)\n",
+           (double)target_speed, (double)current_speed, (double)accel, (double)current_amp,
+           manual_amp >= 0.0f ? "manual" : holding ? "auto, holding" : "auto");
 }
 
 int main(void) {
@@ -165,9 +211,15 @@ int main(void) {
         case 'g': target_speed = last_target; break;
         case '>': accel *= 2.0f; break;
         case '<': accel *= 0.5f; break;
-        case ']': amplitude = amplitude + 0.05f > 1.0f ? 1.0f : amplitude + 0.05f; break;
-        case '[': amplitude = amplitude - 0.05f < 0.0f ? 0.0f : amplitude - 0.05f; break;
-        case '0': amplitude = 0.0f; break;
+        case ']':
+        case '[': {
+            float m = manual_amp >= 0.0f ? manual_amp : current_amp;
+            m += c == ']' ? 0.05f : -0.05f;
+            manual_amp = m > 1.0f ? 1.0f : m < 0.0f ? 0.0f : m;
+            break;
+        }
+        case '0': manual_amp = 0.0f; break;
+        case 'a': manual_amp = -1.0f; break;
         case 'L':  // dump the sine table
             for (uint32_t i = 0; i < (1u << MICROSTEP_LUT_BITS); i++)
                 printf("%d%c", microstep_sine_lut[i], (i & 15) == 15 ? '\n' : ' ');
