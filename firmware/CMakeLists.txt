@@ -22,6 +22,9 @@ add_executable(stepper
     src/ladder.c
     src/adc_monitor.c
     src/led.c
+    src/motion.c
+    src/control.c
+    src/console.c
 )
 
 pico_generate_pio_header(stepper ${CMAKE_CURRENT_LIST_DIR}/src/hbridge_pwm.pio)
@@ -41,6 +44,7 @@ endif()
 target_link_libraries(stepper
     pico_stdlib
     pico_multicore
+    pico_util
     hardware_pio
     hardware_clocks
     hardware_dma

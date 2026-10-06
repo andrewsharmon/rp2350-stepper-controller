@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -13,6 +13,7 @@
 #include "hbridge_encode.h"
 #include "microstep.h"
 #include "ladder.h"
+#include "motion.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
 #define SPAN (PERIOD_CLOCKS - 4 * HBRIDGE_SEGMENT_OVERHEAD)
@@ -181,11 +182,105 @@ static void test_ladder(void) {
     CHECK(!l.stop_latched, "button latched a stop");
 }
 
+typedef struct {
+    int ticks;
+    float max_v, max_a;    // magnitudes seen
+    float overshoot;       // steps past the target (in the direction of travel)
+} run_stats_t;
+
+// Tick until IDLE (or max_ticks); track limits.
+static run_stats_t run_until_idle(motion_axis_t *ax, int max_ticks) {
+    run_stats_t st = {0};
+    float dir = 0.0f;
+    for (; st.ticks < max_ticks && ax->mode != MODE_IDLE; st.ticks++) {
+        float v0 = ax->vel;
+        motion_tick(ax);
+        float a = fabsf(ax->vel - v0) * MOTION_TICK_HZ;
+        if (ax->mode != MODE_IDLE && a > st.max_a) st.max_a = a;  // final snap excluded
+        if (fabsf(ax->vel) > st.max_v) st.max_v = fabsf(ax->vel);
+        if (ax->mode == MODE_POSITION) {
+            float d = motion_units_to_steps(ax->target - ax->pos);
+            if (dir == 0.0f && ax->vel != 0.0f) dir = ax->vel > 0 ? 1.0f : -1.0f;
+            if (dir * -d > st.overshoot) st.overshoot = dir * -d;
+        }
+    }
+    return st;
+}
+
+static void check_move(float from, float to, float vmax, float amax) {
+    motion_axis_t ax;
+    motion_init(&ax, vmax, amax);
+    motion_set_position(&ax, motion_steps_to_units(from));
+    motion_move_to(&ax, motion_steps_to_units(to));
+    run_stats_t st = run_until_idle(&ax, 10000000);
+
+    float d = fabsf(to - from);
+    // Ideal time: triangle if it never reaches vmax, else trapezoid.
+    float ideal = d * amax <= vmax * vmax ? 2.0f * sqrtf(d / amax) : d / vmax + vmax / amax;
+    float t = (float)st.ticks / MOTION_TICK_HZ;
+    CHECK(ax.mode == MODE_IDLE && ax.pos == motion_steps_to_units(to),
+          "move %g->%g: ended at %f in mode %d", from, to, motion_units_to_steps(ax.pos), ax.mode);
+    CHECK(st.max_v <= vmax * 1.0001f, "move %g->%g: speed %f > vmax", from, to, st.max_v);
+    CHECK(st.max_a <= amax * 1.001f, "move %g->%g: accel %f > amax", from, to, st.max_a);
+    CHECK(st.overshoot <= 1e-3f, "move %g->%g: overshoot %f steps", from, to, st.overshoot);
+    CHECK(t <= ideal * 1.03f + 0.005f, "move %g->%g: %.3f s vs ideal %.3f s", from, to, t, ideal);
+}
+
+static void test_motion(void) {
+    check_move(0, 1000, 1500, 2000);     // trapezoid
+    check_move(0, 10, 1500, 2000);       // triangle
+    check_move(0, 0.01f, 1500, 2000);    // tiny
+    check_move(500, -300, 800, 5000);
+    check_move(0, 1e6f, 1600, 2000);     // long: float precision far from target
+    check_move(-12345.678f, 12345.678f, 1500, 2000);
+
+    // Retarget mid-move: reverse direction smoothly, arrive exactly.
+    motion_axis_t ax;
+    motion_init(&ax, 1500, 2000);
+    motion_move_to(&ax, motion_steps_to_units(1000));
+    for (int k = 0; k < 500; k++)
+        motion_tick(&ax);
+    float v_at_switch = ax.vel;
+    motion_move_to(&ax, motion_steps_to_units(-200));
+    run_stats_t st = run_until_idle(&ax, 100000);
+    CHECK(v_at_switch > 900.0f, "retarget: only %f steps/s at switch", v_at_switch);
+    CHECK(ax.pos == motion_steps_to_units(-200), "retarget: ended at %f", motion_units_to_steps(ax.pos));
+    CHECK(st.max_a <= 2000.0f * 1.001f, "retarget: accel %f", st.max_a);
+
+    // Jog: runs while refreshed, then decelerates to a stop by itself.
+    motion_init(&ax, 1500, 2000);
+    motion_jog(&ax, 500, 100);
+    for (int k = 0; k < 300; k++)
+        motion_tick(&ax);
+    CHECK(ax.mode == MODE_IDLE && ax.vel == 0.0f, "jog did not time out (mode %d, v %f)", ax.mode, ax.vel);
+    float p = motion_units_to_steps(ax.pos);
+    // 0.25 s ramp up + ~0 cruise + 0.25 s ramp down... ramp up is cut at 100 ms
+    // (v = 200), then 0.1 s down: travel = 10 + 10 = 20 steps.
+    CHECK(fabsf(p - 20.0f) < 0.5f, "jog travel %f steps", p);
+
+    // Velocity, then stop: decelerates and settles.
+    motion_init(&ax, 1500, 2000);
+    motion_set_velocity(&ax, -800);
+    for (int k = 0; k < 1000; k++)
+        motion_tick(&ax);
+    CHECK(fabsf(ax.vel + 800.0f) < 1e-3f, "velocity mode at %f", ax.vel);
+    motion_stop(&ax);
+    st = run_until_idle(&ax, 10000);
+    CHECK(ax.settled && st.ticks >= 399 && st.ticks <= 401, "stop took %d ticks", st.ticks);
+
+    // set_position only while settled.
+    CHECK(motion_set_position(&ax, 0), "set_position refused while settled");
+    motion_set_velocity(&ax, 10);
+    motion_tick(&ax);
+    CHECK(!motion_set_position(&ax, 0), "set_position allowed while moving");
+}
+
 int main(void) {
     test_encoder();
     test_phase_inc();
     test_microstep();
     test_ladder();
+    test_motion();
     if (failures) {
         printf("%d check(s) failed\n", failures);
         return 1;
