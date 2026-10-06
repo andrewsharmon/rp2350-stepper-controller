@@ -19,6 +19,7 @@
 #include "adc_monitor.h"
 #include "board_pins.h"
 #include "console.h"
+#include "protocol.h"
 #include "control.h"
 #include "hbridge.h"
 #include "led.h"
@@ -255,6 +256,6 @@ int main(void) {
         int c = getchar_timeout_us(250);  // short: telemetry runs up to 1 kHz
         core0_idle_us += time_us_32() - wait_start;
         if (c != PICO_ERROR_TIMEOUT)
-            console_input(c);
+            protocol_input(c);
     }
 }

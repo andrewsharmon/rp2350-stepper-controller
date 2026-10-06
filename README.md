@@ -21,7 +21,7 @@ DRV8833-class dual H-bridges (AT8833).
 | 2 | One motor: sine PWM via PIO + DMA | done, verified on hardware |
 | 3 | 10-axis PWM, ADC monitor, e-stop/button ladder, WS2812 | done on Pico 2; ladder buttons not yet bench-wired |
 | 4 | Trajectory generators and profiles, jog modes, telemetry | done (text telemetry; binary framing comes with milestone 5) |
-| 5 | Coordinated groups and planner, USB protocol, host tool | in progress: groups and planner done; binary protocol next |
+| 5 | Coordinated groups and planner, USB protocol, host tool | groups, planner, binary protocol and host tool done |
 | 6 | I²C target, cam/LED shows, flash config, standalone mode | |
 | 7 | PCB layout, fab, bring-up of the board stack | |
 
@@ -39,6 +39,7 @@ What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
 ## Repository layout
 
 ```
+tools/stepperctl/    host library + command line (binary protocol)
 tools/pvt_demo.py    host demo: streams a PVT wave over USB serial
 firmware/            Pico SDK (C) firmware
   src/               motor PWM (PIO/DMA), microstepping, ADC monitor, ladder, LEDs
@@ -113,6 +114,32 @@ te on            event lines: E <tick> done <ax> <pos>, underrun, stop, clear
 echo off         for scripts: no echo or prompt
 ?                status, loads and per-axis table
 ```
+
+### Host tool (binary protocol)
+
+The same USB port also speaks a framed binary protocol (COBS + CRC-16; the
+message spec is [firmware/src/protocol.h](firmware/src/protocol.h)). Frames
+and the text console coexist: binary frames are wrapped in 0x00 bytes, which
+the console never sends. `tools/stepperctl` is a standard-library Python
+client and command line:
+
+```bash
+python3 tools/stepperctl ping
+python3 tools/stepperctl move 1,2 250 --wait
+python3 tools/stepperctl group 1 create 1,2 --feed 800
+python3 tools/stepperctl group 1 arc -200 0 360
+python3 tools/stepperctl telem --hz 200 --axes 1,2 --seconds 5 > log.csv
+```
+
+```python
+from stepperctl import Client          # run from tools/, or put tools/ on sys.path
+with Client() as c:
+    seq = c.move([1], 500)
+    c.wait_settled([1], after=seq)
+```
+
+Command-line tool tests (no hardware needed):
+`python3 -m unittest discover -s tools/stepperctl -p 'test_*.py' -t tools`
 
 `tools/pvt_demo.py` streams a travelling wave across every axis as PVT points
 (standard-library Python, macOS/Linux):

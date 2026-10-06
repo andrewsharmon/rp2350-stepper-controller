@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -9,12 +9,14 @@
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "hbridge_encode.h"
 #include "microstep.h"
 #include "ladder.h"
 #include "motion.h"
 #include "group.h"
+#include "frame.h"
 #include "trig.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
@@ -258,6 +260,66 @@ static void check_move_profile(motion_profile_t prof, float from, float to, floa
 static void check_move(float from, float to, float vmax, float amax) {
     for (int p = 0; p < PROFILE_COUNT; p++)
         check_move_profile((motion_profile_t)p, from, to, vmax, amax);
+}
+
+static void check_cobs(const uint8_t *in, size_t n, const uint8_t *want, size_t wn) {
+    uint8_t enc[600], dec[600];
+    size_t e = frame_cobs_encode(in, n, enc);
+    CHECK(e == wn && memcmp(enc, want, wn) == 0, "cobs encode of %zu bytes", n);
+    int d = frame_cobs_decode(enc, e, dec, sizeof dec);
+    CHECK(d == (int)n && memcmp(dec, in, n) == 0, "cobs round trip of %zu bytes", n);
+}
+
+static void test_frame(void) {
+    CHECK(frame_crc16((const uint8_t *)"123456789", 9) == 0x29b1, "crc16 check value");
+
+    // Published COBS examples.
+    check_cobs((const uint8_t[]){0x00}, 1, (const uint8_t[]){0x01, 0x01}, 2);
+    check_cobs((const uint8_t[]){0x00, 0x00}, 2, (const uint8_t[]){0x01, 0x01, 0x01}, 3);
+    check_cobs((const uint8_t[]){0x11, 0x22, 0x00, 0x33}, 4, (const uint8_t[]){0x03, 0x11, 0x22, 0x02, 0x33}, 5);
+    check_cobs((const uint8_t[]){0x11, 0x22, 0x33, 0x44}, 4, (const uint8_t[]){0x05, 0x11, 0x22, 0x33, 0x44}, 5);
+    check_cobs((const uint8_t[]){0x11, 0x00, 0x00, 0x00}, 4, (const uint8_t[]){0x02, 0x11, 0x01, 0x01, 0x01}, 5);
+    uint8_t in[255], want[258];
+    for (int i = 0; i < 254; i++) in[i] = (uint8_t)(i + 1);       // 01..FE
+    want[0] = 0xff;
+    memcpy(want + 1, in, 254);
+    check_cobs(in, 254, want, 255);
+    in[254] = 0xff;                                                // 01..FF
+    want[255] = 0x02;
+    want[256] = 0xff;
+    check_cobs(in, 255, want, 257);
+
+    // Golden frame, also checked by the Python tool's tests.
+    uint8_t wire[FRAME_MAX_WIRE], payload[FRAME_MAX_PAYLOAD], type;
+    uint16_t seq;
+    const uint8_t pl[] = {0x00, 0x01, 0x02, 0xff};
+    size_t n = frame_build(0x10, 0x1234, pl, sizeof pl, wire);
+    // Computed independently (bit-by-bit CRC, reference COBS in Python).
+    const uint8_t golden[] = {0x00, 0x04, 0x10, 0x34, 0x12, 0x06, 0x01, 0x02, 0xff, 0xe3, 0xe0, 0x00};
+    CHECK(n == sizeof golden && memcmp(wire, golden, n) == 0, "golden frame (got %zu bytes)", n);
+    if (n != sizeof golden || memcmp(wire, golden, n) != 0) {
+        printf("  frame:");
+        for (size_t i = 0; i < n; i++) printf(" %02x", wire[i]);
+        printf("\n");
+    }
+
+    // Random round trips; corruption is rejected.
+    srand(7);
+    for (int k = 0; k < 2000; k++) {
+        uint8_t p[FRAME_MAX_PAYLOAD];
+        size_t len = (size_t)(rand() % (FRAME_MAX_PAYLOAD + 1));
+        for (size_t i = 0; i < len; i++) p[i] = (uint8_t)(rand() % 4 == 0 ? 0 : rand());
+        n = frame_build((uint8_t)k, (uint16_t)(k * 31), p, len, wire);
+        CHECK(n >= 4 && wire[0] == 0 && wire[n - 1] == 0 && memchr(wire + 1, 0, n - 2) == NULL,
+              "frame %d has a zero inside", k);
+        int got = frame_parse(wire + 1, n - 2, &type, &seq, payload);
+        CHECK(got == (int)len && type == (uint8_t)k && seq == (uint16_t)(k * 31) &&
+              memcmp(payload, p, len) == 0, "frame %d round trip", k);
+        wire[1 + (size_t)rand() % (n - 2)] ^= (uint8_t)(1 + rand() % 255);
+        got = frame_parse(wire + 1, n - 2, &type, &seq, payload);
+        CHECK(got < 0 || !(type == (uint8_t)k && memcmp(payload, p, len) == 0 && got == (int)len),
+              "frame %d corruption accepted", k);
+    }
 }
 
 static void test_trig(void) {
@@ -642,6 +704,7 @@ int main(void) {
     test_phase_inc();
     test_microstep();
     test_ladder();
+    test_frame();
     test_trig();
     test_motion();
     test_pvt();

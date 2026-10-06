@@ -26,6 +26,8 @@ add_executable(stepper
     src/group.c
     src/control.c
     src/console.c
+    src/frame.c
+    src/protocol.c
 )
 
 pico_generate_pio_header(stepper ${CMAKE_CURRENT_LIST_DIR}/src/hbridge_pwm.pio)

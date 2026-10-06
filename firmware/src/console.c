@@ -10,6 +10,7 @@
 #include "adc_monitor.h"
 #include "control.h"
 #include "microstep.h"
+#include "protocol.h"
 
 #define LINE_MAX      160
 #define MAX_TELEM_HZ  1000  // one line per motion tick
@@ -22,6 +23,7 @@ static uint32_t telem_last_us;
 static uint32_t telem_line;       // line counter, lets a host spot drops
 static bool telem_header_due;
 static bool events_on;
+static bool telem_binary;  // send telemetry and events as protocol frames
 
 // Telemetry contents: per-axis fields for the selected axes, then system
 // fields. Each line: T <line> <tick> <system fields> <axis fields...>.
@@ -328,9 +330,7 @@ static void run_line(char *buf) {
         int hz = atoi(argv[1]);
         if (hz < 0 || hz > MAX_TELEM_HZ)
             goto usage;
-        telem_period_us = hz ? 1000000u / (uint32_t)hz : 0;
-        telem_last_us = time_us_32() - telem_period_us;  // first line now
-        telem_header_due = hz != 0;
+        console_set_telemetry((uint32_t)hz, telem_axes, telem_fields, telem_sys, events_on, false);
     } else if (strcmp(cmd, "ta") == 0 && argc == 2) {
         uint32_t m = parse_axes(argv[1]);
         if (!m)
@@ -352,6 +352,7 @@ static void run_line(char *buf) {
         telem_header_due = true;
     } else if (strcmp(cmd, "te") == 0 && argc == 2) {
         events_on = strcmp(argv[1], "off") != 0;
+        telem_binary = false;
     } else if (strcmp(cmd, "echo") == 0 && argc == 2) {
         echo = strcmp(argv[1], "off") != 0;
     } else if (strcmp(cmd, "stress") == 0 && argc == 2) {
@@ -399,6 +400,19 @@ void console_input(int c) {
         if (echo)
             putchar(c);
     }
+}
+
+void console_set_telemetry(uint32_t hz, uint32_t axes, uint32_t fields, uint32_t sys,
+                           bool events, bool binary) {
+    telem_period_us = hz ? 1000000u / hz : 0;
+    telem_last_us = time_us_32() - telem_period_us;  // first line now
+    telem_header_due = hz != 0 && !binary;
+    telem_axes = axes & CONTROL_ALL_AXES;
+    telem_fields = fields;
+    telem_sys = sys;
+    events_on = events;
+    telem_binary = binary;
+    telem_line = 0;
 }
 
 // --- telemetry -------------------------------------------------------------
@@ -563,6 +577,11 @@ static void print_events(const control_snapshot_t *s) {
             bool underrun = s->pvt_underrun[i] != prev_underrun[i];
             if (!done && !underrun)
                 continue;
+            if (telem_binary) {
+                protocol_send_event(s->tick, done ? PROTO_EV_DONE : PROTO_EV_UNDERRUN,
+                                    (uint8_t)(i + 1), s->pos[i]);
+                continue;
+            }
             l.len = 0;
             put_str(&l, "E ");
             put_u64(&l, s->tick);
@@ -574,7 +593,11 @@ static void print_events(const control_snapshot_t *s) {
             }
             flush_line(&l);
         }
-        if (on != prev_on) {
+        if (on != prev_on && telem_binary) {
+            protocol_send_event(s->tick, on ? PROTO_EV_CLEAR :
+                                control_ladder.stop_cause == LADDER_FAULT ? PROTO_EV_FAULT : PROTO_EV_ESTOP,
+                                0, 0);
+        } else if (on != prev_on) {
             l.len = 0;
             put_str(&l, "E ");
             put_u64(&l, s->tick);
@@ -602,6 +625,10 @@ void console_telemetry(uint32_t now_us) {
     telem_last_us = now_us - (now_us - telem_last_us) % telem_period_us;
     if (now_us - telem_last_us >= telem_period_us)
         telem_last_us = now_us;
+    if (telem_binary) {
+        protocol_send_telemetry(&s, ++telem_line, telem_axes, telem_fields, telem_sys);
+        return;
+    }
     if (telem_header_due) {
         telem_header_due = false;
         print_header();

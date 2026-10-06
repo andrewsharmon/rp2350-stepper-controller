@@ -11,6 +11,10 @@ void console_input(int c);
 // Emit a telemetry line if one is due. Call often from core 0.
 void console_telemetry(uint32_t now_us);
 
+// Configure telemetry (text from the console, binary from protocol.c).
+void console_set_telemetry(uint32_t hz, uint32_t axes, uint32_t fields, uint32_t sys,
+                           bool events, bool binary);
+
 // Provided by main.c.
 void app_print_status(void);
 void app_set_stress(bool on);
