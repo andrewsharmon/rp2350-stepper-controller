@@ -9,7 +9,7 @@
 "F1","1.5A hold","Fuse:Fuse_1812_4532Metric","1","SMD1812P150TF","C702823","choose low resistance; alt C21002"
 "J1","USB-C","Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12","1","TYPE-C-31-M-12","C165948","THT shell legs; enclosure supports receptacle"
 "J2,J3","Qwiic","Connector_JST:JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical","2","BM04B-SRSS-TB","C160390",""
-"J10,J11","BTB 30P header","stack:XUNPU_BTB0.408-30P_Header","2","BTB0.408-30PLBDR-G41","C42420579","connector A, board underside,connector B, board underside; offset placement keys stack"
+"J10,J11","BTB 40P header","stack:Hirose_DF40C-40DP_Header","2","DF40C-40DP-0.4V(51)","C424643","connector A, board underside,connector B, board underside; offset placement keys stack"
 "JP1","QWIIC_SUPPLY","Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm","1","","","bridge to power downstream Qwiic devices"
 "JP2","I2C_PU","Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm","1","","","cut to remove I2C pull-ups"
 "L1","3.3u","Inductor_SMD:L_Cenker_CKCS201610","1","AOTA-B201610S3R3-101-T","C42411119","Abracon part per RP2350 design guide; 2016 size"

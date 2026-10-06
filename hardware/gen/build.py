@@ -20,10 +20,13 @@ SOT23_5 = "Package_TO_SOT_SMD:SOT-23-5"
 SMA = "Diode_SMD:D_SMA"
 JP_BRIDGED = "Jumper:SolderJumper-2_P1.3mm_Bridged_RoundedPad1.0x1.5mm"
 JP_OPEN = "Jumper:SolderJumper-2_P1.3mm_Open_RoundedPad1.0x1.5mm"
-# XUNPU BTB0.408 series (0.4 mm pitch, 0.8 mm mated height): header (G41) on the
-# underside of the upper board mates the socket (M41) on top of the lower board.
-BTB_HEADER = ("stack:XUNPU_BTB0.408-30P_Header", "BTB0.408-30PLBDR-G41", "C42420579")
-BTB_SOCKET = ("stack:XUNPU_BTB0.408-30P_Socket", "BTB0.408-30PLBDR-M41", "C42420584")
+# Hirose DF40, 0.4 mm pitch, 40 pins, 2.0 mm stack: header on the underside of
+# the upper board mates the socket on top of the lower board. The four corner
+# contacts (pins 1, 2, 39, 40) are metal fittings per Hirose: tied to GND, but
+# not counted on for current.
+BTB_HEADER = ("stack:Hirose_DF40C-40DP_Header", "DF40C-40DP-0.4V(51)", "C424643")
+BTB_SOCKET = ("stack:Hirose_DF40C-2.0-40DS_Socket", "DF40C(2.0)-40DS-0.4V(51)", "C597934")
+BTB_FIT = ["GND", "GND"]  # one corner pair (both rows) at each end
 TP = "TestPoint:TestPoint_Pad_D1.0mm"
 
 MOTORS = 10
@@ -36,28 +39,40 @@ def motor_nets(m, kind):
     return [f"M{m}_{n}" for n in names]
 
 
+# Pin order follows the MCU's pins so traces fan in without crossing. With the
+# connectors placed pin 1 at the top: A runs down the controller's left edge
+# (power by the power path, then M1 from the MCU's top-left corner, M2-M5 down
+# its left side, M6-M7 round its bottom-left), B down the right edge
+# (utilities high on the MCU's right side, then M10, M9, M8 round the
+# bottom-right). M6/M7 sit on A so they don't cross the crystal/SWD pins.
+
 def btb_a(kind, top):
-    """30-pin connector A: motors 1-5 plus power."""
-    nets = ["GND", "V5", "V5", "V5", "+3V3" if top else "GND", "GND"]
-    nets += motor_nets(1, kind) + ["GND"] + motor_nets(2, kind) + motor_nets(3, kind)
-    nets += ["GND"] + motor_nets(4, kind) + motor_nets(5, kind) + ["GND", "GND"]
-    assert len(nets) == 30
+    """40-pin connector A: motors 1-7, 3V3, 4x V5, 3x GND."""
+    nets = ["V5", "V5", "V5", "V5", "+3V3" if top else "GND", "GND"]
+    nets += motor_nets(1, kind) + motor_nets(2, kind) + ["GND"]
+    nets += motor_nets(3, kind) + motor_nets(4, kind) + ["GND"]
+    nets += motor_nets(5, kind) + motor_nets(6, kind) + motor_nets(7, kind)
+    nets = BTB_FIT + nets + BTB_FIT
+    assert len(nets) == 40
     return nets
 
 
 def btb_b(kind, top):
-    """30-pin connector B: motors 6-10 plus utilities."""
-    nets = ["V5", "V5", "V5", "GND", "VMOT_SENSE" if top else "GND", "BOARD_ID", "LADDER", "LED_DATA", "GND"]
-    nets += motor_nets(6, kind) + motor_nets(7, kind) + ["GND"]
-    nets += motor_nets(8, kind) + motor_nets(9, kind) + motor_nets(10, kind)
-    assert len(nets) == 30
+    """40-pin connector B: utilities, motors 10, 9, 8, 9x V5, 11x GND."""
+    nets = ["V5", "V5", "V5", "V5", "V5", "GND", "GND"]
+    nets += ["LED_DATA", "LADDER", "BOARD_ID", "VMOT_SENSE" if top else "GND", "GND"]
+    # The MCU's right side is numbered bottom-to-top, so each group runs reversed.
+    nets += motor_nets(10, kind)[::-1] + motor_nets(9, kind)[::-1] + ["GND"] + motor_nets(8, kind)[::-1]
+    nets += ["GND", "V5", "V5", "V5", "V5", "GND", "GND", "GND", "GND", "GND", "GND"]
+    nets = BTB_FIT + nets + BTB_FIT
+    assert len(nets) == 40
     return nets
 
 
 def add_btb(sch, ref, nets, part, note):
     fp, mpn, lcsc = part
-    value = "BTB 30P " + ("header" if part is BTB_HEADER else "socket")
-    sch.add("Connector_Generic:Conn_02x15_Odd_Even", "J", value, fp,
+    value = "BTB 40P " + ("header" if part is BTB_HEADER else "socket")
+    sch.add("Connector_Generic:Conn_02x20_Odd_Even", "J", value, fp,
             {str(i + 1): n for i, n in enumerate(nets)}, ref=ref, MPN=mpn, LCSC=lcsc, Note=note)
 
 

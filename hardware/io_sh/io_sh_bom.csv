@@ -4,7 +4,7 @@
 "C3","10u","Capacitor_SMD:C_0805_2012Metric","1","","",""
 "D1","SS54","Diode_SMD:D_SMA","1","SS54","C22452","MDD; Vf 0.55 V @ 5 A"
 "F1","1.5A hold","Fuse:Fuse_1812_4532Metric","1","SMD1812P150TF","C702823",""
-"J1,J2","BTB 30P socket","stack:XUNPU_BTB0.408-30P_Socket","2","BTB0.408-30PLBDR-M41","C42420584","from driver A, top side,from driver B, top side"
+"J1,J2","BTB 40P socket","stack:Hirose_DF40C-2.0-40DS_Socket","2","DF40C(2.0)-40DS-0.4V(51)","C597934","from driver A, top side,from driver B, top side"
 "J3","5V IN","Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical","1","B2B-PH-K-S","C131337",""
 "J4","LED STRIP","Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical","1","B3B-XH-A","C144394",""
 "J5","LED PWR","Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical","1","B2B-PH-K-S","C131337","separate strip supply (optional)"
