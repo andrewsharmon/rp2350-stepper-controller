@@ -36,6 +36,7 @@ typedef enum {
 typedef struct {
     uint8_t type;
     uint16_t axes;   // bit mask, bit 0 = axis 1
+    uint32_t seq;    // set by control_post
     float f1, f2;
     int64_t pos;
     uint32_t ms;
@@ -54,6 +55,9 @@ typedef struct {
     uint32_t pvt_underruns;         // all axes
     uint32_t pvt_dropped;           // points refused: queue full
     uint32_t holding_mask;
+    uint32_t settled_mask;         // generator idle and filters flushed
+    uint16_t pvt_underrun[NUM_MOTORS];
+    uint32_t last_seq;             // sequence number of the last applied command
     uint32_t rejected;             // commands refused (z / prof need the axis at rest)
 } control_snapshot_t;
 
@@ -73,8 +77,9 @@ extern ladder_t control_ladder;             // owned by core 1, read by core 0
 void control_init(void);
 void control_core1_main(void);
 
-// Queue a command for core 1. Returns false if the queue is full.
-bool control_post(const control_cmd_t *cmd);
+// Queue a command for core 1, stamping it with the next sequence number
+// (core 0 only). Returns that number, or 0 if the queue is full.
+uint32_t control_post(const control_cmd_t *cmd);
 
 // Consistent copy of the latest tick's state.
 void control_snapshot(control_snapshot_t *snap);

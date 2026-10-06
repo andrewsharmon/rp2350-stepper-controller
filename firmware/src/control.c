@@ -52,6 +52,7 @@ static control_snapshot_t snap_buf;
 static motion_axis_t axes[NUM_MOTORS];
 static microstep_t steppers[NUM_MOTORS];
 static uint32_t rejected;
+static uint32_t last_seq;
 static uint32_t pvt_dropped;
 
 void control_init(void) {
@@ -61,8 +62,15 @@ void control_init(void) {
     ladder_reset(&control_ladder, time_us_32());
 }
 
-bool control_post(const control_cmd_t *cmd) {
-    return queue_try_add(&cmd_queue, cmd);
+uint32_t control_post(const control_cmd_t *cmd) {
+    static uint32_t next_seq;
+    control_cmd_t c = *cmd;
+    c.seq = ++next_seq ? next_seq : ++next_seq;  // 0 means "failed"
+    if (!queue_try_add(&cmd_queue, &c)) {
+        next_seq--;
+        return 0;
+    }
+    return c.seq;
 }
 
 void control_snapshot(control_snapshot_t *snap) {
@@ -87,6 +95,7 @@ static inline float auto_amplitude(float speed) {
 }
 
 static void apply(const control_cmd_t *c) {
+    last_seq = c->seq;
     for (int i = 0; i < NUM_MOTORS; i++) {
         if (!(c->axes & (1u << i)))
             continue;
@@ -175,11 +184,16 @@ static void publish(uint32_t tick, const float *amp, uint32_t hold) {
         snap_buf.profile[i] = (uint8_t)axes[i].profile;
         snap_buf.jerk_ms[i] = (uint16_t)(axes[i].jerk_ticks * 1000u / MOTION_TICK_HZ);
     }
-    uint32_t underruns = 0;
+    uint32_t underruns = 0, settled = 0;
     for (int i = 0; i < NUM_MOTORS; i++) {
         snap_buf.pvt_depth[i] = (uint8_t)axes[i].pvt_count;
+        snap_buf.pvt_underrun[i] = (uint16_t)axes[i].pvt_underruns;
         underruns += axes[i].pvt_underruns;
+        if (axes[i].settled)
+            settled |= 1u << i;
     }
+    snap_buf.settled_mask = settled;
+    snap_buf.last_seq = last_seq;
     snap_buf.pvt_underruns = underruns;
     snap_buf.pvt_dropped = pvt_dropped;
     snap_buf.holding_mask = hold;

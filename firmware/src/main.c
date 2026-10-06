@@ -252,7 +252,7 @@ int main(void) {
         }
 
         uint32_t wait_start = time_us_32();
-        int c = getchar_timeout_us(1000);
+        int c = getchar_timeout_us(250);  // short: telemetry runs up to 1 kHz
         core0_idle_us += time_us_32() - wait_start;
         if (c != PICO_ERROR_TIMEOUT)
             console_input(c);

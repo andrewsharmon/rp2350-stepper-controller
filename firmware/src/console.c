@@ -7,17 +7,31 @@
 #include "pico/stdlib.h"
 #include "hardware/watchdog.h"
 
+#include "adc_monitor.h"
 #include "control.h"
 #include "microstep.h"
 
 #define LINE_MAX      80
-#define MAX_TELEM_HZ  200   // ~10 axes of text per line over USB CDC
+#define MAX_TELEM_HZ  1000  // one line per motion tick
 #define JOG_TIMEOUT_MS_DEFAULT 300
 
 static char line[LINE_MAX];
 static uint32_t line_len;
 static uint32_t telem_period_us;  // 0 = off
 static uint32_t telem_last_us;
+static uint32_t telem_line;       // line counter, lets a host spot drops
+static bool telem_header_due;
+static bool events_on;
+
+// Telemetry contents: per-axis fields for the selected axes, then system
+// fields. Each line: T <line> <tick> <system fields> <axis fields...>.
+enum { TF_POS = 1, TF_VEL = 2, TF_MODE = 4, TF_AMP = 8, TF_Q = 16 };
+enum { TS_SEQ = 1, TS_VMOT = 2, TS_LADDER = 4, TS_STOP = 8 };
+static const char *const axis_field_names[] = {"pos", "vel", "mode", "amp", "q"};
+static const char *const sys_field_names[] = {"seq", "vmot", "ladder", "stop"};
+static uint32_t telem_axes = CONTROL_ALL_AXES;
+static uint32_t telem_fields = TF_POS | TF_VEL;
+static uint32_t telem_sys;
 static bool echo = true;  // off for host tools: no echo, no prompt
 
 static const char help_text[] =
@@ -34,7 +48,11 @@ static const char help_text[] =
     "  prof <ax> <name> [ms] motion profile: trap, scurve, smooth, cosine, quintic;\n"
     "                        ms = jerk time for scurve/smooth (default 30, max 100)\n"
     "  amp auto|<percent>    drive amplitude: automatic curve, or fixed\n"
-    "  t <hz>                telemetry lines per second (0 = off, max 200)\n"
+    "  t <hz>                telemetry lines per second (0 = off, max 1000)\n"
+    "  ta <ax>               telemetry axes (default *)\n"
+    "  tf <f,...>            per-axis fields: pos vel mode amp q (default pos,vel)\n"
+    "  ts <f,...>|none       system fields: seq vmot ladder stop (default none)\n"
+    "  te on|off             event lines: E <tick> done|underrun <ax>, stop <cause>, clear\n"
     "  echo on|off           echo typed characters and show the prompt (off for scripts)\n"
     "  stress on|off         every axis sweeps its own speed wave\n"
     "  ?                     status\n"
@@ -79,6 +97,23 @@ static uint32_t parse_axes(const char *s) {
             return 0;
     }
     return mask;
+}
+
+// "pos,vel" -> bit mask over `names`.
+static bool parse_names(const char *s, const char *const *names, int n, uint32_t *mask) {
+    char buf[LINE_MAX];
+    strncpy(buf, s, sizeof buf - 1);
+    buf[sizeof buf - 1] = '\0';
+    *mask = 0;
+    for (char *tok = strtok(buf, ","); tok; tok = strtok(NULL, ",")) {
+        int k = 0;
+        while (k < n && strcmp(tok, names[k]) != 0)
+            k++;
+        if (k == n)
+            return false;
+        *mask |= 1u << k;
+    }
+    return *mask != 0;
 }
 
 static bool parse_float(const char *s, float *out) {
@@ -211,8 +246,29 @@ static void run_line(char *buf) {
         if (hz < 0 || hz > MAX_TELEM_HZ)
             goto usage;
         telem_period_us = hz ? 1000000u / (uint32_t)hz : 0;
-        if (hz)
-            printf("telemetry: T <tick> then <position> <speed> per axis\n");
+        telem_last_us = time_us_32() - telem_period_us;  // first line now
+        telem_header_due = hz != 0;
+    } else if (strcmp(cmd, "ta") == 0 && argc == 2) {
+        uint32_t m = parse_axes(argv[1]);
+        if (!m)
+            goto usage;
+        telem_axes = m;
+        telem_header_due = true;
+    } else if ((strcmp(cmd, "tf") == 0 || strcmp(cmd, "ts") == 0) && argc == 2) {
+        bool axis = cmd[1] == 'f';
+        uint32_t m;
+        if (!axis && strcmp(argv[1], "none") == 0)
+            m = 0;
+        else if (!parse_names(argv[1], axis ? axis_field_names : sys_field_names,
+                              axis ? 5 : 4, &m))
+            goto usage;
+        if (axis)
+            telem_fields = m;
+        else
+            telem_sys = m;
+        telem_header_due = true;
+    } else if (strcmp(cmd, "te") == 0 && argc == 2) {
+        events_on = strcmp(argv[1], "off") != 0;
     } else if (strcmp(cmd, "echo") == 0 && argc == 2) {
         echo = strcmp(argv[1], "off") != 0;
     } else if (strcmp(cmd, "stress") == 0 && argc == 2) {
@@ -262,14 +318,210 @@ void console_input(int c) {
     }
 }
 
+// --- telemetry -------------------------------------------------------------
+// Integers only: float printf is too slow for 10 axes at 1 kHz on core 0.
+
+typedef struct {
+    char buf[512];
+    uint32_t len;
+} line_t;
+
+static void put_char(line_t *l, char c) {
+    if (l->len < sizeof l->buf - 1)
+        l->buf[l->len++] = c;
+}
+
+static void put_str(line_t *l, const char *s) {
+    while (*s)
+        put_char(l, *s++);
+}
+
+static void put_u64(line_t *l, uint64_t v) {
+    char tmp[21];
+    int n = 0;
+    do {
+        tmp[n++] = (char)('0' + v % 10);
+        v /= 10;
+    } while (v);
+    while (n)
+        put_char(l, tmp[--n]);
+}
+
+static void put_i64(line_t *l, int64_t v) {
+    if (v < 0) {
+        put_char(l, '-');
+        put_u64(l, (uint64_t)-v);
+    } else {
+        put_u64(l, (uint64_t)v);
+    }
+}
+
+// Value in 1/10^decimals, printed with a decimal point.
+static void put_fixed(line_t *l, int64_t v, int decimals, int64_t scale) {
+    if (v < 0) {
+        put_char(l, '-');
+        v = -v;
+    }
+    put_u64(l, (uint64_t)(v / scale));
+    put_char(l, '.');
+    int64_t frac = v % scale;
+    for (int64_t d = scale / 10; decimals--; d /= 10) {
+        put_char(l, (char)('0' + frac / d));
+        frac %= d;
+    }
+}
+
+// Position in full steps with 3 decimals, rounded.
+static void put_pos(line_t *l, int64_t units) {
+    bool neg = units < 0;
+    uint64_t u = neg ? (uint64_t)-units : (uint64_t)units;
+    uint64_t whole = u >> 30;
+    uint64_t milli = ((u & ((1ull << 30) - 1)) * 1000 + (1ull << 29)) >> 30;
+    int64_t v = (int64_t)(whole * 1000 + milli);
+    put_fixed(l, neg ? -v : v, 3, 1000);
+}
+
+static void flush_line(line_t *l) {
+    put_char(l, '\n');
+    fwrite(l->buf, 1, l->len, stdout);
+    fflush(stdout);
+}
+
+static char mode_letter(uint8_t m) {
+    static const char letters[] = "ipvjt";  // idle pos vel jog pvt
+    return m < sizeof letters - 1 ? letters[m] : '?';
+}
+
+static void print_header(void) {
+    line_t l = {0};
+    put_str(&l, "# T line tick");
+    for (int k = 0; k < 4; k++)
+        if (telem_sys & (1u << k)) {
+            put_char(&l, ' ');
+            put_str(&l, sys_field_names[k]);
+        }
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        if (!(telem_axes & (1u << i)))
+            continue;
+        for (int k = 0; k < 5; k++)
+            if (telem_fields & (1u << k)) {
+                put_char(&l, ' ');
+                put_u64(&l, (uint64_t)(i + 1));
+                put_char(&l, '.');
+                put_str(&l, axis_field_names[k]);
+            }
+    }
+    flush_line(&l);
+}
+
+static void print_line(const control_snapshot_t *s) {
+    line_t l = {0};
+    put_str(&l, "T ");
+    put_u64(&l, ++telem_line);
+    put_char(&l, ' ');
+    put_u64(&l, s->tick);
+    if (telem_sys & TS_SEQ) {
+        put_char(&l, ' ');
+        put_u64(&l, s->last_seq);
+    }
+    if (telem_sys & TS_VMOT) {
+        put_char(&l, ' ');
+        put_u64(&l, adc_monitor_vmot_mv());
+    }
+    if (telem_sys & TS_LADDER) {
+        put_char(&l, ' ');
+        put_u64(&l, adc_monitor_pin_mv(MON_LADDER));
+    }
+    if (telem_sys & TS_STOP) {
+        // 0 running, else the latched cause: 1 e-stop, 2 driver fault.
+        put_char(&l, ' ');
+        put_char(&l, control_outputs_on ? '0' :
+                 control_ladder.stop_cause == LADDER_FAULT ? '2' : '1');
+    }
+    for (int i = 0; i < NUM_MOTORS; i++) {
+        if (!(telem_axes & (1u << i)))
+            continue;
+        if (telem_fields & TF_POS) {
+            put_char(&l, ' ');
+            put_pos(&l, s->pos[i]);
+        }
+        if (telem_fields & TF_VEL) {
+            float v = s->vel[i] * 10.0f;
+            put_char(&l, ' ');
+            put_fixed(&l, (int64_t)(v >= 0.0f ? v + 0.5f : v - 0.5f), 1, 10);
+        }
+        if (telem_fields & TF_MODE) {
+            put_char(&l, ' ');
+            put_char(&l, (s->holding_mask >> i) & 1 ? 'h' : mode_letter(s->mode[i]));
+        }
+        if (telem_fields & TF_AMP) {
+            put_char(&l, ' ');
+            put_u64(&l, (uint64_t)(s->amp[i] * 100.0f + 0.5f));
+        }
+        if (telem_fields & TF_Q) {
+            put_char(&l, ' ');
+            put_u64(&l, s->pvt_depth[i]);
+        }
+    }
+    flush_line(&l);
+}
+
+static void print_events(const control_snapshot_t *s) {
+    static bool have_prev;
+    static uint32_t prev_settled;
+    static uint16_t prev_underrun[NUM_MOTORS];
+    static bool prev_on = true;
+    bool on = control_outputs_on;
+
+    if (events_on && have_prev) {
+        line_t l = {0};
+        for (int i = 0; i < NUM_MOTORS; i++) {
+            bool done = (s->settled_mask & ~prev_settled) & (1u << i);
+            bool underrun = s->pvt_underrun[i] != prev_underrun[i];
+            if (!done && !underrun)
+                continue;
+            l.len = 0;
+            put_str(&l, "E ");
+            put_u64(&l, s->tick);
+            put_str(&l, done ? " done " : " underrun ");
+            put_u64(&l, (uint64_t)(i + 1));
+            if (done) {
+                put_char(&l, ' ');
+                put_pos(&l, s->pos[i]);
+            }
+            flush_line(&l);
+        }
+        if (on != prev_on) {
+            l.len = 0;
+            put_str(&l, "E ");
+            put_u64(&l, s->tick);
+            put_str(&l, on ? " clear" : control_ladder.stop_cause == LADDER_FAULT ? " stop fault"
+                                                                              : " stop estop");
+            flush_line(&l);
+        }
+    }
+    have_prev = true;
+    prev_settled = s->settled_mask;
+    memcpy(prev_underrun, s->pvt_underrun, sizeof prev_underrun);
+    prev_on = on;
+}
+
 void console_telemetry(uint32_t now_us) {
-    if (!telem_period_us || now_us - telem_last_us < telem_period_us)
+    bool line_due = telem_period_us && now_us - telem_last_us >= telem_period_us;
+    if (!line_due && !events_on)
         return;
-    telem_last_us = now_us;
     control_snapshot_t s;
     control_snapshot(&s);
-    printf("T %lu", (unsigned long)s.tick);
-    for (int i = 0; i < NUM_MOTORS; i++)
-        printf(" %.3f %.1f", steps(s.pos[i]), (double)s.vel[i]);
-    putchar('\n');
+    print_events(&s);
+    if (!line_due)
+        return;
+    // Keep the cadence even if a line is late.
+    telem_last_us = now_us - (now_us - telem_last_us) % telem_period_us;
+    if (now_us - telem_last_us >= telem_period_us)
+        telem_last_us = now_us;
+    if (telem_header_due) {
+        telem_header_due = false;
+        print_header();
+    }
+    print_line(&s);
 }
