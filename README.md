@@ -40,6 +40,8 @@ What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
 - **Safety:** an e-stop or driver fault on the analog ladder cuts all outputs in about 30 µs. A watchdog on core 0 drops outputs to coast if core 1 stalls.
 - **Status LEDs:** a WS2812 chain shows overall status plus each axis's speed and direction.
 
+How it works, from trajectory planning to PIO pin toggling: [docs/THEORY.md](docs/THEORY.md).
+
 ## Repository layout
 
 ```
