@@ -26,6 +26,7 @@
 #include "control.h"
 #include "hbridge.h"
 #include "led.h"
+#include "i2c_target.h"
 #include "player.h"
 #include "show_store.h"
 #include "standalone.h"
@@ -329,6 +330,7 @@ int main(void) {
     // Let V5 settle before driving the coils (no soft-start on V5).
     sleep_ms(POWER_UP_SETTLE_MS);
     control_energized = true;
+    i2c_target_init();  // Qwiic, on boards that have it
 
     // Standalone: queue the boot show (it starts once outputs are on, so a
     // stop latched at power-up waits for Btn1 to clear it).
@@ -353,6 +355,7 @@ int main(void) {
         }
         console_telemetry(now);
         player_poll(now);
+        i2c_target_poll();
         if (adc_monitor_check())
             printf("ADC FIFO overflow: monitor restarted\n");
 

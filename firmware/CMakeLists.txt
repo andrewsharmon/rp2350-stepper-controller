@@ -33,6 +33,7 @@ add_executable(stepper
     src/show_store.c
     src/player.c
     src/standalone.c
+    src/i2c_target.c
 )
 
 pico_generate_pio_header(stepper ${CMAKE_CURRENT_LIST_DIR}/src/hbridge_pwm.pio)
@@ -60,6 +61,8 @@ target_link_libraries(stepper
     hardware_adc
     hardware_flash
     pico_flash
+    pico_i2c_slave
+    hardware_i2c
 )
 
 pico_enable_stdio_usb(stepper 1)

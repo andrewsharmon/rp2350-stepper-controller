@@ -105,7 +105,20 @@ static void wr_u32(writer_t *w, uint32_t v) { put(w, &v, 4); }
 static void wr_i64(writer_t *w, int64_t v) { put(w, &v, 8); }
 static void wr_f32(writer_t *w, float v) { put(w, &v, 4); }
 
+// When set, replies are captured here instead of sent over USB
+// (protocol_request). Telemetry and events always go to USB.
+static uint8_t *capture;
+static size_t capture_max, capture_len;
+
 static void send(uint8_t type, uint16_t seq, const writer_t *w) {
+    if (capture) {
+        if ((size_t)w->len + 1 <= capture_max) {
+            capture[0] = type;
+            memcpy(capture + 1, w->buf, (size_t)w->len);
+            capture_len = (size_t)w->len + 1;
+        }
+        return;
+    }
     uint8_t wire[FRAME_MAX_WIRE];
     size_t n = frame_build(type, seq, w->buf, (size_t)w->len, wire);
     // Raw: the text path turns \n into \r\n, which would corrupt a frame.
@@ -173,6 +186,13 @@ static void send_status(uint16_t seq) {
     send(PROTO_STATUS, seq, &w);
 }
 
+static void send_telem(uint8_t type, const writer_t *w) {
+    uint8_t *saved = capture;  // never captured: always to USB
+    capture = NULL;
+    send(type, 0, w);
+    capture = saved;
+}
+
 void protocol_send_telemetry(const control_snapshot_t *s, uint32_t line, uint32_t axes,
                              uint32_t fields, uint32_t sys) {
     writer_t w = {0};
@@ -200,7 +220,7 @@ void protocol_send_telemetry(const control_snapshot_t *s, uint32_t line, uint32_
         if (fields & 16)
             wr_u8(&w, s->pvt_depth[i]);
     }
-    send(PROTO_TELEM, 0, &w);
+    send_telem(PROTO_TELEM, &w);
 }
 
 void protocol_send_event(uint32_t tick, uint8_t kind, uint8_t axis, int64_t pos) {
@@ -209,7 +229,7 @@ void protocol_send_event(uint32_t tick, uint8_t kind, uint8_t axis, int64_t pos)
     wr_u8(&w, kind);
     wr_u8(&w, axis);
     wr_i64(&w, pos);
-    send(PROTO_EVENT, 0, &w);
+    send_telem(PROTO_EVENT, &w);
 }
 
 // --- shows -------------------------------------------------------------------------
@@ -255,12 +275,30 @@ static bool store(uint32_t slot, const uint8_t *data, uint32_t len) {
 
 // --- requests -----------------------------------------------------------------------
 
+static void dispatch(uint8_t type, uint16_t seq, const uint8_t *payload, int n);
+
 static void handle_frame(const uint8_t *buf, uint32_t len) {
     uint8_t type, payload[FRAME_MAX_PAYLOAD];
     uint16_t seq;
     int n = frame_parse(buf, len, &type, &seq, payload);
     if (n < 0)
         return;  // corrupt: the host times out and retries
+    dispatch(type, seq, payload, n);
+}
+
+size_t protocol_request(uint8_t type, const uint8_t *payload, size_t len,
+                        uint8_t *reply, size_t reply_max) {
+    if (len > FRAME_MAX_PAYLOAD)
+        return 0;
+    capture = reply;
+    capture_max = reply_max;
+    capture_len = 0;
+    dispatch(type, 0, payload, (int)len);
+    capture = NULL;
+    return capture_len;
+}
+
+static void dispatch(uint8_t type, uint16_t seq, const uint8_t *payload, int n) {
     reader_t r = {payload, n, true};
     control_cmd_t c = {0};
     bool post_cmd = true;

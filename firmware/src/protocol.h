@@ -1,6 +1,8 @@
 #pragma once
 
-// Binary protocol over the USB serial port, alongside the text console.
+// Binary protocol over the USB serial port, alongside the text console. The
+// same requests also travel over the Qwiic I2C target without framing
+// (i2c_target.h).
 // Framing is in frame.h; this file is the message spec, mirrored by
 // tools/stepperctl/protocol.py. All fields little-endian. Positions are
 // int64 in units of 2^-30 full step; speeds are float32 full steps/s.
@@ -69,6 +71,7 @@
 // System field bits:    TS_SEQ 1, TS_VMOT 2, TS_LADDER 4, TS_STOP 8.
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "control.h"
 
@@ -96,6 +99,12 @@ enum { PROTO_EV_DONE = 1, PROTO_EV_UNDERRUN, PROTO_EV_ESTOP, PROTO_EV_FAULT, PRO
 // Feed one received byte: frame bytes are handled here, everything else
 // goes to the text console.
 void protocol_input(int c);
+
+// Run one request without framing (the I2C target's transport) and capture
+// the reply into `reply` as [type, payload...]. Returns the reply length
+// (0 if there is none). Core 0 only.
+size_t protocol_request(uint8_t type, const uint8_t *payload, size_t len,
+                        uint8_t *reply, size_t reply_max);
 
 // Telemetry and events in binary (called by console.c when the binary
 // telemetry mode is on).

@@ -22,7 +22,7 @@ DRV8833-class dual H-bridges (AT8833).
 | 3 | 10-axis PWM, ADC monitor, e-stop/button ladder, WS2812 | done on Pico 2; ladder buttons not yet bench-wired |
 | 4 | Trajectory generators and profiles, jog modes, telemetry | done (text telemetry; binary framing comes with milestone 5) |
 | 5 | Coordinated groups and planner, USB protocol, host tool | done |
-| 6 | I²C target, cam/LED shows, flash config, standalone mode | in progress: flash config, shows, standalone mode done; I²C target next |
+| 6 | I²C target, cam/LED shows, flash config, standalone mode | done; I²C target written for the RP2354B board but **untested** (no free pins or I²C master on the bench) |
 | 7 | PCB layout, fab, bring-up of the board stack | |
 
 What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
@@ -150,6 +150,15 @@ with Client() as c:
 
 Command-line tool tests (no hardware needed):
 `python3 -m unittest discover -s tools/stepperctl -p 'test_*.py' -t tools`
+
+### I²C (Qwiic) — untested
+
+On the RP2354B board the Qwiic port (I2C1, GPIO 46/47) is an I²C target at
+address 0x42 carrying the same requests as the binary protocol, without COBS
+framing: write `[type][payload…]`, then read `[n][type][reply payload…]`
+(`n` = 0 means not ready yet, read again). See
+[firmware/src/i2c_target.h](firmware/src/i2c_target.h). It is compiled out on
+the Pico 2 bench build and has not been run on hardware yet.
 
 `tools/pvt_demo.py` streams a travelling wave across every axis as PVT points
 (standard-library Python, macOS/Linux):
