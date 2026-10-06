@@ -32,9 +32,9 @@ connectors at opposite edges. No screws: the enclosure captures the stack.
   - Inductor: Abracon AOTA-B201610S3R3-101-T has a polarity dot. Lay it out in the same orientation as the Pico 2.
 - USB-C receptacle with THT shell legs. The enclosure supports the receptacle so plug forces never reach the BTBs.
 - CC1 / CC2: 5.1 k pull-downs, also routed to ADC (GPIO40/41) to read the source current advertisement.
-- Power path: `VBUS -> PTC (~1.5 A hold, 1812) -> low-Vf Schottky -> V5 bus -> BTB`.
-- 3.3 V LDO (ME6211 class, <= 6 V input) fed from the V5 bus.
-- No soft-start. Keep total capacitance on V5 (all tiers) at about 30-40 uF or less.
+- Power path: `VBUS -> PTC (~1.5 A hold, 1812) -> low-Vf Schottky -> V5_IN -> soft-start switch -> V5 bus -> BTB`.
+- 3.3 V LDO (ME6211 class, <= 6 V input) fed from V5_IN, ahead of the switch.
+- Soft-start: AO3401A P-FET (C15127) with 100 nF gate-source and 100 k gate-ground (tau 10 ms). At plug-in the cap holds the FET off, then it turns on over a few ms, so the ~70 uF on the V5 bus charges at about 0.1 A. USB sees only the ~11 uF on V5_IN at attach. External 5 V (tier 3) reaches V5_IN through the FET's body diode, then its channel.
 - 2x Qwiic (JST-SH 4-pin) on I2C1:
   - The board is not powered from Qwiic. The ME6211 conducts from VOUT back to VIN, so a Qwiic-fed 3V3 would back-power the V5 bus (drivers, LEDs).
   - Solder jumpers for pull-ups (2.2-4.7 k) and for supplying 3V3 to downstream Qwiic devices.
@@ -156,7 +156,7 @@ Use 1% resistors. Thresholds sit midway between the levels; debounce over 2-3 sa
 ## Electrical notes
 
 - PWM frequency is about 20 kHz. The AT8833 input deglitch (about 450 ns) sets a minimum pulse of about 0.5 us, roughly 1% duty. Firmware dithers duties below that.
-- Wait about 100 ms after power-up before energizing motors (V5 settling, no soft-start).
+- Wait about 100 ms after power-up before energizing motors (V5 soft-start settling).
 - USB budget comes from CC; brownout guard from VMOTOR_SENSE.
 - AT8833 inputs read >= 2 V as high and have 100 k pull-downs. After a reset, a GPIO that was high can sit near 2 V (RP2350-E9), which could turn a bridge on while nSLEEP is high. Not handled yet: firmware should drive the motor pins low before a reset it triggers, but a watchdog reset can't be caught that way, so a hardware fix (e.g. stronger pull-downs, <= ~8.2 k, if the GPIO drive allows) is still open.
 - Tier 3: the NO_ESTOP jumper ships bridged. It must be cut when an e-stop is fitted, or the e-stop does nothing. Mark this on the silkscreen.
@@ -184,7 +184,7 @@ Part data:
 Open items:
 
 - Board-ID table.
-- V5 capacitance is about 73 uF nominal, over the 30-40 uF target (and USB's 10 uF at attach). The AT8833 datasheet asks for >= 10 uF per chip, so the likely fix is a slow-start load switch on V5 rather than fewer capacitors.
+- Soft-start: measure the inrush on the first boards and adjust the 100 nF / 100 k if needed.
 - Ladder: a held button masks an open e-stop (e-stop open + Btn1 reads 1.65 V = Btn1). Firmware should only accept a button after the idle level, or the e-stop moves off the ladder.
 - ABM8-272-T3 LCSC number not checked yet.
 - PCB layout.

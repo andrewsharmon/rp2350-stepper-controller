@@ -130,15 +130,26 @@ def controller():
     R(s, "5.1k", "CC1", "GND")
     R(s, "5.1k", "CC2", "GND")
 
-    # Power path: VBUS -> PTC -> Schottky -> V5 bus; 3.3 V LDO from V5.
+    # Power path: VBUS -> PTC -> Schottky -> V5_IN -> soft-start switch -> V5 bus.
+    # The 3.3 V LDO runs from V5_IN, ahead of the switch.
     s.add("Device:Polyfuse", "F", "1.5A hold", "Fuse:Fuse_1812_4532Metric", {"1": "VBUS", "2": "VBUS_F"},
           MPN="SMD1812P150TF", LCSC="C702823", Note="choose low resistance; alt C21002")
-    s.add("Device:D_Schottky", "D", "SS54", SMA, {"2": "VBUS_F", "1": "V5"},
+    s.add("Device:D_Schottky", "D", "SS54", SMA, {"2": "VBUS_F", "1": "V5_IN"},
           LCSC="C22452", MPN="SS54", Note="MDD; Vf 0.55 V @ 5 A")
-    C(s, "10u", "V5", "GND", C0805)
+    C(s, "10u", "V5_IN", "GND", C0805)
     s.add("Regulator_Linear:ME6211C33M5", "U", "ME6211C33M5G", SOT23_5,
-          {"1": "V5", "3": "V5", "2": "GND", "5": "+3V3"}, LCSC="C82942", MPN="ME6211C33M5G-N")
-    C(s, "1u", "V5", "GND")
+          {"1": "V5_IN", "3": "V5_IN", "2": "GND", "5": "+3V3"}, LCSC="C82942", MPN="ME6211C33M5G-N")
+    C(s, "1u", "V5_IN", "GND")
+
+    # Soft-start: at plug-in the gate cap holds Vgs at 0, then the gate decays
+    # through 100k (tau 10 ms), so the ~70 uF on the V5 bus charges over a few
+    # ms (~0.1 A) instead of as a USB inrush spike. External 5 V on tier 3
+    # back-feeds V5_IN through the body diode, then the channel once Vgs builds.
+    s.add("Transistor_FET:AO3401A", "Q", "AO3401A", "Package_TO_SOT_SMD:SOT-23",
+          {"S": "V5_IN", "D": "V5", "G": "SS_GATE"}, LCSC="C15127", MPN="AO3401A",
+          Note="AOS; 60 mohm @ 4.5 V, Vth ~0.9 V")
+    C(s, "100n", "V5_IN", "SS_GATE", Note="soft-start timing with the 100k")
+    R(s, "100k", "SS_GATE", "GND", Note="soft-start timing with the 100n")
     C(s, "1u", "+3V3", "GND")
 
     # Qwiic x2: optional supply out via jumper. No power in: the ME6211 conducts
@@ -188,7 +199,7 @@ def controller():
     add_btb(s, "J10", btb_a("in", True), BTB_HEADER, "connector A, board underside")
     add_btb(s, "J11", btb_b("in", True), BTB_HEADER, "connector B, board underside; offset placement keys stack")
 
-    flags(s, "GND", "V5", "+1V1", "VREG_AVDD", "VBUS")
+    flags(s, "GND", "V5", "V5_IN", "+1V1", "VREG_AVDD", "VBUS")
     return s
 
 
