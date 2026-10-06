@@ -87,7 +87,7 @@ Host tests (no hardware needed):
 cd firmware/test
 cc -std=c11 -O1 -Wall -Wextra -DCONFIG_HOST_TEST -I../src test_host.c ../src/hbridge_encode.c \
    ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c \
-   ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c \
+   ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c \
    -lm -o test_host && ./test_host
 ```
 
