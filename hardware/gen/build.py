@@ -137,9 +137,10 @@ def controller():
     s.add("Connector:USB_C_Receptacle_USB2.0_16P", "J", "USB-C", "Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12",
           {"VBUS": "VBUS", "GND": "GND", "CC1": "CC1", "CC2": "CC2", "D+": "USB_DP", "D-": "USB_DM", "SHIELD": "GND"},
           ref="J1", LCSC="C165948", MPN="TYPE-C-31-M-12", Note="THT shell legs; enclosure supports receptacle")
-    s.add("Power_Protection:USBLC6-2SC6", "U", "USBLC6-2SC6", "Package_TO_SOT_SMD:SOT-23-6",
-          {"1": "USB_DP", "6": "USB_DP", "3": "USB_DM", "4": "USB_DM", "5": "VBUS", "2": "GND"},
-          LCSC="C7519", MPN="USBLC6-2SC6")
+    # 2-line ESD, SOT-553: small enough to sit on the D+/D- pair by the receptacle.
+    s.add("Power_Protection:TPD2E2U06DRL", "U", "TPD2E2U06", "Package_TO_SOT_SMD:SOT-553",
+          {"3": "USB_DP", "5": "USB_DM", "4": "GND"},
+          LCSC="C1972959", MPN="TPD2E2U06DRLR", Note="TI; 1.5 pF; pins 1-2 NC")
     R(s, "27", "USB_DP", "USB_DP_MCU")
     R(s, "27", "USB_DM", "USB_DM_MCU")
     R(s, "5.1k", "CC1", "GND")

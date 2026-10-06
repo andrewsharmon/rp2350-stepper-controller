@@ -31,7 +31,7 @@
 "TP4","GND","TestPoint:TestPoint_Pad_D1.0mm","1","","",""
 "TP5","+3V3","TestPoint:TestPoint_Pad_D1.0mm","1","","",""
 "U1","RP2354B","Package_DFN_QFN:QFN-80-1EP_10x10mm_P0.4mm_EP3.4x3.4mm","1","RP2354B","C39843328","2 MB in-package flash; leave QSPI_SD0-3/SCLK unconnected"
-"U2","USBLC6-2SC6","Package_TO_SOT_SMD:SOT-23-6","1","USBLC6-2SC6","C7519",""
+"U2","TPD2E2U06","Package_TO_SOT_SMD:SOT-553","1","TPD2E2U06DRLR","C1972959","TI; 1.5 pF; pins 1-2 NC"
 "U3","ME6211C33M5G","Package_TO_SOT_SMD:SOT-23-5","1","ME6211C33M5G-N","C82942",""
 "U4","74AHCT1G125","Package_TO_SOT_SMD:SOT-23-5","1","SN74AHCT1G125DBVR","C7484",""
 "Y1","12MHz","Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm","1","ABM8-272-T3","C20625731","Abracon, per RP2350 design guide; other crystals need retuning and testing"
