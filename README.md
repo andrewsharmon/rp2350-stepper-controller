@@ -1,7 +1,9 @@
 # RP2350 coordinated stepper controller
 
 > **Work in progress.** Firmware runs on a Raspberry Pi Pico 2 bench setup.
-> The custom boards are schematic-only; no PCB layout yet.
+> The custom board designs are an **unreviewed feasibility first pass**:
+> schematics only, no PCB layout, not checked against datasheets or built.
+> Don't fabricate them as-is.
 
 A very low-cost, compact controller for up to **10 small stepper motors** (8 mm
 micro steppers, 28BYJ-48 converted to bipolar, about 0.2 A per coil or less).
@@ -15,7 +17,7 @@ DRV8833-class dual H-bridges (AT8833).
 
 | # | Milestone | State |
 |---|---|---|
-| 1 | Hardware spec and KiCad schematics for all three boards | done (parts TBD noted in [hardware/README.md](hardware/README.md)) |
+| 1 | Hardware spec and KiCad schematics for all three boards | first pass, **not reviewed** (open part picks in [hardware/README.md](hardware/README.md)) |
 | 2 | One motor: sine PWM via PIO + DMA | done, verified on hardware |
 | 3 | 10-axis PWM, ADC monitor, e-stop/button ladder, WS2812 | done on Pico 2; ladder buttons not yet bench-wired |
 | 4 | Trajectory generators and profiles, jog modes, telemetry | next |

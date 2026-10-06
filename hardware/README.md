@@ -1,5 +1,10 @@
 # Hardware specification
 
+> **Status: unreviewed feasibility first pass.** These schematics, part picks
+> and pin maps were put together quickly to check that the concept fits. They
+> have not been reviewed, checked against datasheets, laid out or built.
+> Expect errors; don't fabricate from them as-is.
+
 Low-cost, compact, up-to-10-axis stepper controller for small high-resistance
 steppers (8 mm micro steppers, 28BYJ-48 converted to bipolar, <= 0.2 A/coil).
 The MCU generates sine PWM (voltage-mode microstepping) directly into cheap
