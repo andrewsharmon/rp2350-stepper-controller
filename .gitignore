@@ -1,0 +1,17 @@
+# macOS
+.DS_Store
+
+# Firmware build trees
+firmware/build*/
+
+# KiCad per-user state, local history, backups and caches
+*.kicad_prl
+.history/
+*-backups/
+fp-info-cache
+*.lck
+\#auto_saved_files#
+_autosave-*
+
+# Python
+__pycache__/

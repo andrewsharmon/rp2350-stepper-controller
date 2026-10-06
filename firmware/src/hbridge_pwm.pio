@@ -1,0 +1,33 @@
+; Four-pin H-bridge PWM for one bipolar stepper (one AT8833 dual H-bridge).
+;
+; Pins (out base + 0..3): AIN1, AIN2, BIN1, BIN2.
+; Each PWM period is four segments. A segment is one 16-bit half-word:
+;   bits [3:0]  = pin pattern for the segment
+;   bits [15:4] = length; the segment lasts (length + 3) SM clocks
+; Two 32-bit FIFO words per period (autopull, shift right), fed by DMA.
+; If the FIFO runs dry the SM stalls holding the last pattern, which the
+; encoder always makes brake (11/11): both coils shorted, no drive.
+
+.program hbridge_pwm
+.wrap_target
+    out pins, 4
+    out x, 12
+seg_loop:
+    jmp x-- seg_loop
+.wrap
+
+% c-sdk {
+// Configures the SM but leaves it disabled so several can be started in sync.
+static inline void hbridge_pwm_program_init(PIO pio, uint sm, uint offset, uint pin_base, float clkdiv) {
+    for (uint i = 0; i < 4; i++)
+        pio_gpio_init(pio, pin_base + i);
+    pio_sm_set_consecutive_pindirs(pio, sm, pin_base, 4, true);
+
+    pio_sm_config c = hbridge_pwm_program_get_default_config(offset);
+    sm_config_set_out_pins(&c, pin_base, 4);
+    sm_config_set_out_shift(&c, true, true, 32);
+    sm_config_set_fifo_join(&c, PIO_FIFO_JOIN_TX);
+    sm_config_set_clkdiv(&c, clkdiv);
+    pio_sm_init(pio, sm, offset, &c);
+}
+%}
