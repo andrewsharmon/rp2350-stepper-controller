@@ -44,6 +44,24 @@ static inline float trig_cosf(float x) {
     return trig_sinf(x + (float)(0.5 * TRIG_PI));
 }
 
+// sin(x) and cos(x) for any x, in double (slow on the M33: software doubles).
+static inline double trig_sin_d(double x) {
+    double r = x - 2.0 * TRIG_PI * (double)(long long)(x / (2.0 * TRIG_PI));
+    if (r > TRIG_PI)
+        r -= 2.0 * TRIG_PI;
+    else if (r < -TRIG_PI)
+        r += 2.0 * TRIG_PI;
+    if (r > 0.5 * TRIG_PI)
+        r = TRIG_PI - r;
+    else if (r < -0.5 * TRIG_PI)
+        r = -TRIG_PI - r;
+    return trig_sin_core_d(r);
+}
+
+static inline double trig_cos_d(double x) {
+    return trig_sin_d(x + 0.5 * TRIG_PI);
+}
+
 // cos(pi * u) for u in [0, 1], in double.
 static inline double trig_cos_pi_d(double u) {
     return trig_sin_core_d(TRIG_PI * (0.5 - u));

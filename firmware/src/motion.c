@@ -67,6 +67,7 @@ void motion_init(motion_axis_t *ax, float vmax, float amax) {
     ax->settled = true;
     ax->vmax = vmax;
     ax->amax = amax;
+    ax->group = -1;
     motion_set_profile(ax, PROFILE_SCURVE, DEFAULT_JERK_MS);
 }
 
@@ -129,7 +130,7 @@ void motion_stop(motion_axis_t *ax) {
 bool motion_set_position(motion_axis_t *ax, int64_t pos) {
     if (!ax->settled)
         return false;
-    ax->pos = ax->gen_pos = ax->target = pos;
+    ax->pos = ax->gen_pos = ax->gen_last = ax->target = pos;
     return true;
 }
 
@@ -177,15 +178,16 @@ bool motion_pvt_start(motion_axis_t *ax) {
     ax->mode = MODE_PVT;
     ax->settled = false;
     ax->seg_active = false;
-    ax->gen_pos = ax->pos;  // settled: generator and output agree
+    ax->gen_pos = ax->gen_last = ax->pos;  // settled: generator and output agree
     ax->gen_vel = ax->gen_acc = 0.0f;
     return pvt_next(ax);
 }
 
 void motion_halt(motion_axis_t *ax) {
-    ax->gen_pos = ax->target = ax->pos;
+    ax->gen_pos = ax->gen_last = ax->target = ax->pos;
     ax->vel = ax->gen_vel = ax->gen_acc = 0.0f;
-    ax->mode = MODE_IDLE;
+    ax->mode = ax->group >= 0 ? MODE_GROUP : MODE_IDLE;  // stays in its group
+    ax->group_moving = false;
     ax->seg_active = false;
     ax->settled = true;
     ax->unfiltered = false;
@@ -369,6 +371,9 @@ static bool generate(motion_axis_t *ax) {
         }
         break;
 
+    case MODE_GROUP:
+        return ax->group_moving;  // group_tick already set gen_pos / gen_vel
+
     case MODE_PVT: {
         if (++ax->pvt_tick >= ax->pvt_ticks) {
             // Knot: land exactly, then continue with the next point.
@@ -424,9 +429,9 @@ static bool generate(motion_axis_t *ax) {
 }
 
 void motion_tick(motion_axis_t *ax) {
-    int64_t before = ax->gen_pos;
     bool moving = generate(ax);
-    int64_t delta = ax->gen_pos - before;
+    int64_t delta = ax->gen_pos - ax->gen_last;
+    ax->gen_last = ax->gen_pos;
 
     uint32_t stages = filter_stages(ax);
     bool flushed = true;
@@ -437,7 +442,7 @@ void motion_tick(motion_axis_t *ax) {
 
     ax->pos += delta;
     ax->vel = (float)delta * STEPS_PER_UNIT_F * (float)MOTION_TICK_HZ;
-    ax->settled = !moving && flushed && ax->mode == MODE_IDLE;
+    ax->settled = !moving && flushed && (ax->mode == MODE_IDLE || ax->mode == MODE_GROUP);
     if (ax->settled) {
         ax->vel = 0.0f;
         ax->unfiltered = false;

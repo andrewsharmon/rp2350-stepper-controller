@@ -11,7 +11,7 @@
 #include "control.h"
 #include "microstep.h"
 
-#define LINE_MAX      80
+#define LINE_MAX      160
 #define MAX_TELEM_HZ  1000  // one line per motion tick
 #define JOG_TIMEOUT_MS_DEFAULT 300
 
@@ -45,6 +45,10 @@ static const char help_text[] =
     "  lim <ax> <vmax> [amax]  speed / acceleration limits\n"
     "  p <ax> <pos> <vel> <ms>  queue a PVT point: reach pos at vel, ms after the last\n"
     "  pgo <ax>              start following queued PVT points (axes at rest; same tick)\n"
+    "  g <id> <ax> [feed] [corner_ms]  group 1-4 over axes (at rest); g <id> off releases\n"
+    "  gl <id> <pos...> [f<feed>]       group line: one absolute position per member\n"
+    "  ga <id> <cx> <cy> <deg> [f<feed>] [t<tol>]  arc on the first two members\n"
+    "  gh <id> / gr <id> / gs <id>      hold / resume / stop (stop drops the queue)\n"
     "  prof <ax> <name> [ms] motion profile: trap, scurve, smooth, cosine, quintic;\n"
     "                        ms = jerk time for scurve/smooth (default 30, max 100)\n"
     "  amp auto|<percent>    drive amplitude: automatic curve, or fixed\n"
@@ -73,6 +77,7 @@ static const char *mode_name(uint8_t m) {
     case MODE_VELOCITY: return "vel";
     case MODE_JOG:      return "jog";
     case MODE_PVT:      return "pvt";
+    case MODE_GROUP:    return "grp";
     }
     return "?";
 }
@@ -144,18 +149,31 @@ static void print_axes(void) {
             printf("  pvt queue %u", s.pvt_depth[i]);
         putchar('\n');
     }
+    for (int k = 0; k < GROUP_COUNT; k++) {
+        if (!s.group[k].active)
+            continue;
+        printf("  group %d: axes", k + 1);
+        for (int i = 0; i < NUM_MOTORS; i++)
+            if (s.group[k].members & (1u << i))
+                printf(" %d", i + 1);
+        printf(", %s, path speed %.1f, %u queued%s, %lu segments done\n",
+               s.group[k].hold ? "held" : s.group[k].running ? "running" : "idle",
+               (double)s.group[k].v, s.group[k].queued, s.group[k].arc ? " + arc" : "",
+               (unsigned long)s.group[k].segments_done);
+    }
     if (s.pvt_underruns || s.pvt_dropped)
         printf("  pvt: %lu underrun(s), %lu point(s) dropped (queue full)\n",
                (unsigned long)s.pvt_underruns, (unsigned long)s.pvt_dropped);
     if (s.rejected)
-        printf("  %lu command(s) rejected (z, prof and pgo need the axis at rest)\n",
+        printf("  %lu command(s) rejected (z, prof, pgo and g need axes at rest; grouped axes\n"
+               "    only take group commands)\n",
                (unsigned long)s.rejected);
 }
 
 static void run_line(char *buf) {
-    char *argv[6];
+    char *argv[16];
     int argc = 0;
-    for (char *tok = strtok(buf, " \t"); tok && argc < 6; tok = strtok(NULL, " \t"))
+    for (char *tok = strtok(buf, " \t"); tok && argc < 16; tok = strtok(NULL, " \t"))
         argv[argc++] = tok;
     if (argc == 0)
         return;
@@ -221,6 +239,71 @@ static void run_line(char *buf) {
         if (!c.axes)
             goto usage;
         c.type = CMD_PVT_START;
+        post(&c);
+    } else if (cmd[0] == 'g' && argc >= 2 &&
+               (cmd[1] == '\0' || (cmd[2] == '\0' && strchr("lahrs", cmd[1])))) {
+        long id = strtol(argv[1], NULL, 10);
+        if (id < 1 || id > GROUP_COUNT)
+            goto usage;
+        c.ms = (uint32_t)(id - 1);
+        // Trailing f<feed> / t<tol> options (gl, ga).
+        while (argc > 2 && (argv[argc - 1][0] == 'f' || argv[argc - 1][0] == 't') &&
+               (cmd[1] == 'l' || cmd[1] == 'a')) {
+            float *dst = argv[argc - 1][0] == 'f' ? &c.f1 : &c.f2;
+            if (!parse_float(argv[argc - 1] + 1, dst))
+                goto usage;
+            argc--;
+        }
+        switch (cmd[1]) {
+        case '\0':
+            if (argc == 3 && strcmp(argv[2], "off") == 0) {
+                c.type = CMD_GROUP_RELEASE;
+                break;
+            }
+            if (argc < 3 || argc > 5)
+                goto usage;
+            c.type = CMD_GROUP_CREATE;
+            c.axes = (uint16_t)parse_axes(argv[2]);
+            c.f1 = CONTROL_DEFAULT_VMAX;
+            if (!c.axes || (argc >= 4 && !parse_float(argv[3], &c.f1)) ||
+                (argc == 5 && !parse_float(argv[4], &c.f2)))
+                goto usage;
+            break;
+        case 'l':
+            c.type = CMD_GROUP_LINE;
+            c.n = (uint8_t)(argc - 2);
+            if (c.n < 1 || c.n > GROUP_MAX_AXES)
+                goto usage;
+            for (int k = 0; k < c.n; k++) {
+                if (!parse_float(argv[2 + k], &f))
+                    goto usage;
+                c.vec[k] = motion_steps_to_units(f);
+            }
+            break;
+        case 'a': {
+            float cx, cy;
+            if (argc != 5 || !parse_float(argv[2], &cx) || !parse_float(argv[3], &cy))
+                goto usage;
+            char *end;
+            double deg = strtod(argv[4], &end);
+            if (*end)
+                goto usage;
+            c.type = CMD_GROUP_ARC;
+            c.vec[0] = motion_steps_to_units(cx);
+            c.vec[1] = motion_steps_to_units(cy);
+            c.d1 = deg * 3.14159265358979323846 / 180.0;
+            break;
+        }
+        case 'h':
+        case 'r':
+            c.type = CMD_GROUP_HOLD;
+            c.f1 = cmd[1] == 'h' ? 1.0f : 0.0f;
+            break;
+        case 's':
+            c.type = CMD_GROUP_STOP;
+            break;
+        }
+        app_set_stress(false);
         post(&c);
     } else if (strcmp(cmd, "prof") == 0 && (argc == 3 || argc == 4)) {
         c.axes = (uint16_t)parse_axes(argv[1]);

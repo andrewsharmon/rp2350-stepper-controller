@@ -7,6 +7,7 @@
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "group.h"
 #include "ladder.h"
 #include "motion.h"
 
@@ -31,6 +32,12 @@ typedef enum {
     CMD_PROFILE,     // ms: profile (motion_profile_t), f1: jerk time in ms
     CMD_PVT_POINT,   // pos: position (units), f1: speed, ms: time since previous point
     CMD_PVT_START,   // start following queued points (axes must be at rest)
+    CMD_GROUP_CREATE,  // ms: group id, axes: members, f1: feed, f2: corner time ms
+    CMD_GROUP_RELEASE, // ms: group id
+    CMD_GROUP_LINE,    // ms: group id, n + vec: target per member, f1: feed
+    CMD_GROUP_ARC,     // ms: group id, vec[0..1]: center, d1: angle (rad), f1: feed, f2: tolerance
+    CMD_GROUP_HOLD,    // ms: group id, f1: 1 hold / 0 resume
+    CMD_GROUP_STOP,    // ms: group id: decelerate along the path, drop the queue
 } control_cmd_type_t;
 
 typedef struct {
@@ -40,6 +47,9 @@ typedef struct {
     float f1, f2;
     int64_t pos;
     uint32_t ms;
+    uint8_t n;                    // values in vec
+    double d1;
+    int64_t vec[GROUP_MAX_AXES];
 } control_cmd_t;
 
 typedef struct {
@@ -58,6 +68,13 @@ typedef struct {
     uint32_t settled_mask;         // generator idle and filters flushed
     uint16_t pvt_underrun[NUM_MOTORS];
     uint32_t last_seq;             // sequence number of the last applied command
+    struct {
+        bool active, running, hold, arc;
+        uint16_t members;          // axis mask
+        uint8_t queued;
+        float v;                   // path speed, full steps/s
+        uint32_t segments_done;
+    } group[GROUP_COUNT];
     uint32_t rejected;             // commands refused (z / prof need the axis at rest)
 } control_snapshot_t;
 

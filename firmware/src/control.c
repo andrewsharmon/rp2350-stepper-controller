@@ -50,6 +50,7 @@ static control_snapshot_t snap_buf;
 
 // Core 1 state.
 static motion_axis_t axes[NUM_MOTORS];
+static group_t groups[GROUP_COUNT];
 static microstep_t steppers[NUM_MOTORS];
 static uint32_t rejected;
 static uint32_t last_seq;
@@ -94,12 +95,70 @@ static inline float auto_amplitude(float speed) {
     return AMP_LOW + slope * (v - AMP_LOW_SPEED);
 }
 
+// Group commands address a group, not axes. Returns true if handled.
+static bool apply_group(const control_cmd_t *c) {
+    if (c->type < CMD_GROUP_CREATE)
+        return false;
+    if (c->ms >= GROUP_COUNT) {
+        rejected++;
+        return true;
+    }
+    group_t *g = &groups[c->ms];
+    bool ok = true;
+    switch (c->type) {
+    case CMD_GROUP_CREATE: {
+        uint8_t members[GROUP_MAX_AXES];
+        uint32_t n = 0;
+        for (int i = 0; i < NUM_MOTORS; i++)
+            if (c->axes & (1u << i))
+                members[n++] = (uint8_t)i;
+        ok = !g->active && group_create(g, (int8_t)c->ms, axes, members, n, c->f1);
+        if (ok && c->f2 > 0.0f)
+            g->corner_s = c->f2 / 1000.0f;
+        break;
+    }
+    case CMD_GROUP_RELEASE:
+        ok = group_release(g, axes);
+        break;
+    case CMD_GROUP_LINE:
+        ok = g->active && c->n == g->n && group_line(g, axes, c->vec, c->f1);
+        break;
+    case CMD_GROUP_ARC:
+        ok = g->active && group_arc(g, c->vec, c->d1, c->f1, c->f2 > 0.0f ? c->f2 : 0.05f);
+        break;
+    case CMD_GROUP_HOLD:
+        ok = g->active;
+        group_hold(g, c->f1 != 0.0f);
+        break;
+    case CMD_GROUP_STOP:
+        ok = g->active;
+        group_stop(g);
+        break;
+    default:
+        break;
+    }
+    if (!ok)
+        rejected++;
+    return true;
+}
+
 static void apply(const control_cmd_t *c) {
     last_seq = c->seq;
+    if (apply_group(c))
+        return;
     for (int i = 0; i < NUM_MOTORS; i++) {
         if (!(c->axes & (1u << i)))
             continue;
         motion_axis_t *ax = &axes[i];
+        if (ax->group >= 0 && c->type != CMD_LIMITS && c->type != CMD_PROFILE) {
+            // A grouped axis belongs to its group: stop stops the group,
+            // other motion commands are refused.
+            if (c->type == CMD_STOP)
+                group_stop(&groups[ax->group]);
+            else
+                rejected++;
+            continue;
+        }
         switch (c->type) {
         case CMD_MOVE:
             motion_move_to(ax, c->pos);
@@ -148,6 +207,8 @@ static void apply(const control_cmd_t *c) {
 static void halt_all(void) {
     for (int i = 0; i < NUM_MOTORS; i++)
         motion_halt(&axes[i]);
+    for (int k = 0; k < GROUP_COUNT; k++)
+        group_halt(&groups[k], axes);
 }
 
 // Returns true if a stop is latched (outputs are off).
@@ -193,6 +254,20 @@ static void publish(uint32_t tick, const float *amp, uint32_t hold) {
             settled |= 1u << i;
     }
     snap_buf.settled_mask = settled;
+    for (int k = 0; k < GROUP_COUNT; k++) {
+        const group_t *g = &groups[k];
+        uint16_t members = 0;
+        for (uint32_t j = 0; g->active && j < g->n; j++)
+            members |= (uint16_t)(1u << g->axis[j]);
+        snap_buf.group[k].active = g->active;
+        snap_buf.group[k].running = g->running;
+        snap_buf.group[k].hold = g->hold;
+        snap_buf.group[k].arc = g->arc_active;
+        snap_buf.group[k].members = members;
+        snap_buf.group[k].queued = (uint8_t)g->count;
+        snap_buf.group[k].v = g->v;
+        snap_buf.group[k].segments_done = g->segments_done;
+    }
     snap_buf.last_seq = last_seq;
     snap_buf.pvt_underruns = underruns;
     snap_buf.pvt_dropped = pvt_dropped;
@@ -251,7 +326,8 @@ void __time_critical_func(control_core1_main)(void) {
             // Keep draining commands so the queue doesn't fill; motion ones
             // are dropped (the axes are halted).
             while (queue_try_remove(&cmd_queue, &cmd))
-                if (cmd.type == CMD_SET_POS || cmd.type == CMD_LIMITS || cmd.type == CMD_PROFILE)
+                if (cmd.type == CMD_SET_POS || cmd.type == CMD_LIMITS || cmd.type == CMD_PROFILE ||
+                    cmd.type == CMD_GROUP_CREATE || cmd.type == CMD_GROUP_RELEASE)
                     apply(&cmd);
             for (int i = 0; i < NUM_MOTORS; i++)
                 amp[i] = 0.0f;
@@ -280,6 +356,8 @@ void __time_critical_func(control_core1_main)(void) {
                 while (queue_try_remove(&cmd_queue, &cmd))
                     apply(&cmd);
                 hold = 0;
+                for (int k = 0; k < GROUP_COUNT; k++)
+                    group_tick(&groups[k], axes);
                 for (int i = 0; i < NUM_MOTORS; i++) {
                     int64_t before = axes[i].pos;
                     motion_tick(&axes[i]);

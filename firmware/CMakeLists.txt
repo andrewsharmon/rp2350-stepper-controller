@@ -23,6 +23,7 @@ add_executable(stepper
     src/adc_monitor.c
     src/led.c
     src/motion.c
+    src/group.c
     src/control.c
     src/console.c
 )

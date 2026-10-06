@@ -28,6 +28,7 @@ typedef enum {
     MODE_JOG,       // like velocity, but decelerates to a stop if not
                     // refreshed within the jog timeout
     MODE_PVT,       // follow streamed position/velocity/time points
+    MODE_GROUP,     // owned by a coordinated group (group.c drives gen_pos)
 } motion_mode_t;
 
 typedef enum {
@@ -64,8 +65,10 @@ typedef struct {
     motion_mode_t mode;
     bool settled;         // generator idle and filters flushed (hold current)
 
-    // Raw generator state (before the filters).
-    int64_t gen_pos;
+    // Raw generator state (before the filters). gen_last is the generator
+    // position the output has already followed: a group moves gen_pos
+    // before the axis ticks, so the per-tick delta is gen_pos - gen_last.
+    int64_t gen_pos, gen_last;
     float gen_vel, gen_acc;
 
     // Command
@@ -93,6 +96,10 @@ typedef struct {
     float pvt_v1;
     uint32_t pvt_underruns;
     bool unfiltered;      // PVT (and its underrun ramp) bypass the filters
+
+    // Group ownership (group.c).
+    int8_t group;         // -1: not in a group
+    bool group_moving;    // the group moved this axis this tick
 
     // Settings
     float vmax;           // full steps/s

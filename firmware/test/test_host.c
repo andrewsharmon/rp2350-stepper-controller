@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -14,6 +14,7 @@
 #include "microstep.h"
 #include "ladder.h"
 #include "motion.h"
+#include "group.h"
 #include "trig.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
@@ -345,6 +346,209 @@ static void test_pvt(void) {
           motion_units_to_steps(ax.pos));
 }
 
+// Run a group to completion on trapezoid axes (no filter, so the path itself
+// is checked). Tracks per-axis speed / acceleration excess and the largest
+// per-tick speed jump.
+typedef struct {
+    int ticks;
+    float max_v_ratio, max_a_ratio;   // worst |v|/vmax, |a|/amax over axes
+    float min_v_mid;                  // lowest path speed seen at a junction crossing
+} group_stats_t;
+
+static group_stats_t run_group(group_t *g, motion_axis_t *axes, int max_ticks) {
+    group_stats_t st = {0};
+    st.min_v_mid = INFINITY;
+    float vprev[GROUP_MAX_AXES];
+    for (uint32_t k = 0; k < g->n; k++)
+        vprev[k] = axes[g->axis[k]].vel;  // may start mid-move
+    uint32_t done = g->segments_done;
+    for (; st.ticks < max_ticks; st.ticks++) {
+        group_tick(g, axes);
+        for (uint32_t k = 0; k < g->n; k++)
+            motion_tick(&axes[g->axis[k]]);
+        for (uint32_t k = 0; k < g->n; k++) {
+            motion_axis_t *ax = &axes[g->axis[k]];
+            float vr = fabsf(ax->vel) / ax->vmax;
+            float ar = fabsf(ax->vel - vprev[k]) * MOTION_TICK_HZ / ax->amax;
+            if (vr > st.max_v_ratio) st.max_v_ratio = vr;
+            if (ar > st.max_a_ratio) st.max_a_ratio = ar;
+            vprev[k] = ax->vel;
+        }
+        if (g->segments_done != done && g->count > 0 && g->v < st.min_v_mid)
+            st.min_v_mid = g->v;  // just crossed into the next segment
+        done = g->segments_done;
+        bool settled = true;
+        for (uint32_t k = 0; k < g->n; k++)
+            settled &= axes[g->axis[k]].settled;
+        if (group_idle(g) && settled)
+            break;
+    }
+    return st;
+}
+
+static void group_axes_init(motion_axis_t *axes, int n) {
+    for (int i = 0; i < n; i++) {
+        motion_init(&axes[i], 1500, 2000);
+        motion_set_profile(&axes[i], PROFILE_TRAP, 0);
+    }
+}
+
+static void test_group(void) {
+    motion_axis_t axes[3];
+    group_t g;
+    const uint8_t xy[2] = {0, 1}, xyz[3] = {0, 1, 2};
+    const float corner = 0.02f;  // default corner time
+
+    // Square: corners land exactly; on each side the other axis stays put.
+    group_axes_init(axes, 2);
+    CHECK(group_create(&g, 0, axes, xy, 2, 1000), "create refused");
+    int64_t sq[4][2] = {{1000, 0}, {1000, 1000}, {0, 1000}, {0, 0}};
+    for (int k = 0; k < 4; k++) {
+        int64_t t[2] = {motion_steps_to_units(sq[k][0]), motion_steps_to_units(sq[k][1])};
+        group_line(&g, axes, t, 0);
+    }
+    int64_t y_side1_max = 0;
+    for (int n = 0; n < 1000; n++) {  // first side: y must not move
+        group_tick(&g, axes);
+        motion_tick(&axes[0]);
+        motion_tick(&axes[1]);
+        int64_t y = axes[1].pos < 0 ? -axes[1].pos : axes[1].pos;
+        if (y > y_side1_max) y_side1_max = y;
+    }
+    group_stats_t st = run_group(&g, axes, 100000);
+    CHECK(y_side1_max == 0, "square: y moved %lld units on the x side", (long long)y_side1_max);
+    CHECK(group_idle(&g) && axes[0].pos == 0 && axes[1].pos == 0, "square ended at %f,%f",
+          motion_units_to_steps(axes[0].pos), motion_units_to_steps(axes[1].pos));
+    CHECK(st.max_v_ratio <= 1.001f, "square: speed %.3f x vmax", st.max_v_ratio);
+    // Square corners: a full stop is needed (90 degrees, corner time 20 ms
+    // allows only amax*0.02 = 40 steps/s of jump).
+    // A corner may jump each axis's speed by amax * corner (one tick), so
+    // the per-tick acceleration seen is at most amax * corner * 1000 = 20x.
+    CHECK(st.max_a_ratio <= corner * MOTION_TICK_HZ * 1.001f, "square: accel %.3f x amax", st.max_a_ratio);
+    CHECK(g.segments_done == 4, "square: %u segments done", g.segments_done);
+
+    // Diagonal with unequal limits: stays on the line, arrives together.
+    group_axes_init(axes, 3);
+    axes[1].vmax = 300;  // slow axis sets the pace
+    axes[2].amax = 500;
+    group_create(&g, 1, axes, xyz, 3, 5000);
+    int64_t tgt[3] = {motion_steps_to_units(800), motion_steps_to_units(400), motion_steps_to_units(-200)};
+    group_line(&g, axes, tgt, 0);
+    float worst_off = 0;
+    for (int n = 0; n < 20000 && !(group_idle(&g) && axes[0].settled); n++) {
+        group_tick(&g, axes);
+        for (int k = 0; k < 3; k++)
+            motion_tick(&axes[k]);
+        // Distance from the line through the origin and the target.
+        float p[3], t[3] = {800, 400, -200}, tt = 0, pt = 0;
+        for (int k = 0; k < 3; k++) {
+            p[k] = motion_units_to_steps(axes[k].pos);
+            tt += t[k] * t[k];
+            pt += p[k] * t[k];
+        }
+        float off = 0;
+        for (int k = 0; k < 3; k++) {
+            float e = p[k] - t[k] * pt / tt;
+            off += e * e;
+        }
+        if (sqrtf(off) > worst_off) worst_off = sqrtf(off);
+        CHECK(fabsf(axes[1].vel) <= 300.0f * 1.001f, "diagonal: axis 2 at %f", axes[1].vel);
+    }
+    CHECK(worst_off < 0.01f, "diagonal: %f steps off the line", worst_off);
+    for (int k = 0; k < 3; k++)
+        CHECK(axes[k].pos == tgt[k], "diagonal: axis %d ended at %f", k + 1, motion_units_to_steps(axes[k].pos));
+
+    // Circle of 64 chords: flows through the junctions without stopping.
+    group_axes_init(axes, 2);
+    group_create(&g, 2, axes, xy, 2, 800);
+    for (int k = 1; k <= 64; k++) {
+        float a = 2.0f * (float)M_PI * k / 64.0f;
+        int64_t t[2] = {motion_steps_to_units(500.0f * (cosf(a) - 1.0f)), motion_steps_to_units(500.0f * sinf(a))};
+        if (k == 64) t[0] = t[1] = 0;
+        if (!group_line(&g, axes, t, 0)) {
+            run_group(&g, axes, 200);  // make room
+            group_line(&g, axes, t, 0);
+        }
+        for (int n = 0; n < 40; n++) {  // keep streaming while it runs
+            group_tick(&g, axes);
+            motion_tick(&axes[0]);
+            motion_tick(&axes[1]);
+        }
+    }
+    st = run_group(&g, axes, 100000);
+    CHECK(axes[0].pos == 0 && axes[1].pos == 0, "circle ended at %f,%f",
+          motion_units_to_steps(axes[0].pos), motion_units_to_steps(axes[1].pos));
+    // Chord turn 5.6 deg: per-axis jump allowed amax*0.02 = 40 steps/s at
+    // |du| ~ 0.098, so ~400 steps/s at junctions; must never stop mid-circle.
+    CHECK(st.max_v_ratio <= 1.001f, "circle: speed %.3f x vmax", st.max_v_ratio);
+
+    // Full circle as an arc: back exactly at the start, always on the
+    // circle within the chord tolerance, never stopping on the way.
+    group_axes_init(axes, 2);
+    group_create(&g, 2, axes, xy, 2, 800);
+    int64_t ctr[2] = {motion_steps_to_units(-500), 0};
+    CHECK(group_arc(&g, ctr, 2.0 * M_PI, 0, 0.05f), "arc refused");
+    float worst_r = 0;
+    st.min_v_mid = INFINITY;
+    for (int n = 0; n < 100000 && !group_idle(&g); n++) {
+        group_tick(&g, axes);
+        motion_tick(&axes[0]);
+        motion_tick(&axes[1]);
+        float x = motion_units_to_steps(axes[0].pos) + 500.0f, y = motion_units_to_steps(axes[1].pos);
+        float dr = fabsf(sqrtf(x * x + y * y) - 500.0f);
+        if (dr > worst_r) worst_r = dr;
+        if (n > 1000 && g.arc_active && g.v < st.min_v_mid) st.min_v_mid = g.v;
+    }
+    CHECK(worst_r < 0.06f, "arc: %f steps off the circle", worst_r);
+    CHECK(axes[0].pos == 0 && axes[1].pos == 0, "arc ended at %f,%f",
+          motion_units_to_steps(axes[0].pos), motion_units_to_steps(axes[1].pos));
+    CHECK(st.min_v_mid > 700.0f, "arc slowed to %f mid-circle", st.min_v_mid);
+
+    // Collinear segments: no slowdown at the joint.
+    group_axes_init(axes, 2);
+    group_create(&g, 3, axes, xy, 2, 1000);
+    int64_t c1[2] = {motion_steps_to_units(1000), motion_steps_to_units(1000)};
+    int64_t c2[2] = {motion_steps_to_units(2000), motion_steps_to_units(2000)};
+    group_line(&g, axes, c1, 0);
+    group_line(&g, axes, c2, 0);
+    st = run_group(&g, axes, 100000);
+    CHECK(st.min_v_mid > 999.0f, "collinear: slowed to %f at the joint", st.min_v_mid);
+    CHECK(axes[0].pos == c2[0] && axes[1].pos == c2[1], "collinear end");
+
+    // Hold mid-move, resume, finish exactly. Then stop flushes the queue.
+    group_axes_init(axes, 2);
+    group_create(&g, 0, axes, xy, 2, 1000);
+    int64_t h1[2] = {motion_steps_to_units(3000), 0};
+    group_line(&g, axes, h1, 0);
+    for (int n = 0; n < 800; n++) { group_tick(&g, axes); motion_tick(&axes[0]); motion_tick(&axes[1]); }
+    group_hold(&g, true);
+    st = run_group(&g, axes, 2000);  // runs until held (not idle): bounded
+    CHECK(g.v == 0.0f && g.running && axes[0].pos < h1[0], "hold: v %f", g.v);
+    // Float path distance on a 3000-step segment adds ~0.5% tick-to-tick noise.
+    CHECK(st.max_a_ratio <= 1.01f, "hold decel %.3f x amax", st.max_a_ratio);
+    group_hold(&g, false);
+    run_group(&g, axes, 100000);
+    CHECK(axes[0].pos == h1[0], "resume ended at %f", motion_units_to_steps(axes[0].pos));
+    int64_t h2[2] = {0, motion_steps_to_units(3000)};
+    group_line(&g, axes, h2, 0);
+    for (int n = 0; n < 800; n++) { group_tick(&g, axes); motion_tick(&axes[0]); motion_tick(&axes[1]); }
+    group_stop(&g);
+    run_group(&g, axes, 100000);
+    CHECK(group_idle(&g) && axes[1].pos > 0 && axes[1].pos < h2[1], "stop: idle %d at %f,%f",
+          group_idle(&g), motion_units_to_steps(axes[0].pos), motion_units_to_steps(axes[1].pos));
+    int64_t h3[2] = {0, 0};
+    group_line(&g, axes, h3, 0);
+    run_group(&g, axes, 100000);
+    CHECK(axes[0].pos == 0 && axes[1].pos == 0, "after stop, line from current position");
+
+    // Ownership: release only at rest, then axes are free again.
+    CHECK(group_release(&g, axes) && axes[0].group == -1 && axes[0].mode == MODE_IDLE, "release");
+    motion_set_velocity(&axes[0], 100);
+    motion_tick(&axes[0]);
+    CHECK(!group_create(&g, 0, axes, xy, 2, 1000), "create allowed with a moving axis");
+    (void)corner;
+}
+
 static void test_motion(void) {
     check_move(0, 1000, 1500, 2000);     // trapezoid
     check_move(0, 10, 1500, 2000);       // triangle
@@ -429,6 +633,7 @@ int main(void) {
     test_trig();
     test_motion();
     test_pvt();
+    test_group();
     if (failures) {
         printf("%d check(s) failed\n", failures);
         return 1;
