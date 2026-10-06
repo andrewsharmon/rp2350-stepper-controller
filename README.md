@@ -22,7 +22,7 @@ DRV8833-class dual H-bridges (AT8833).
 | 3 | 10-axis PWM, ADC monitor, e-stop/button ladder, WS2812 | done on Pico 2; ladder buttons not yet bench-wired |
 | 4 | Trajectory generators and profiles, jog modes, telemetry | done (text telemetry; binary framing comes with milestone 5) |
 | 5 | Coordinated groups and planner, USB protocol, host tool | done |
-| 6 | I²C target, cam/LED shows, flash config, standalone mode | in progress: flash config and shows done; standalone mode next |
+| 6 | I²C target, cam/LED shows, flash config, standalone mode | in progress: flash config, shows, standalone mode done; I²C target next |
 | 7 | PCB layout, fab, bring-up of the board stack | |
 
 What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
@@ -31,6 +31,7 @@ What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
 - **10 axes:** each has its own position, velocity or jog mode on a 1 kHz trajectory tick. Drive amplitude depends on speed, with lower holding current at standstill. Core 1 is about 33-35% loaded, core 0 about 0.5%.
 - **Coordinated groups:** up to 4 groups, each owning a set of axes. A group follows a queue of straight lines and arcs in joint space, with every axis starting and finishing together. Lookahead keeps it moving through gentle corners and chord-split arcs, and no axis exceeds its own limits. On the Pico 2, a 300-step-radius circle ran at a constant 800 steps/s and closed exactly.
 - **Shows:** keyframe tracks for axes and LED pixels on one timeline, written as JSON, compiled and uploaded to one of 4 flash slots. Axes pass exactly through every keyframe (played as PVT), LED colours fade between keys, and shows can loop. A show is refused if any segment would exceed an axis's speed or acceleration limit. On the Pico 2, a looping 10-axis wave with 9 LED tracks hit all 360 keyframes checked exactly over 2.5 loops.
+- **Standalone mode:** a boot show (saved in the configuration) starts at power-up with no computer attached. Btn1 clears a latched stop once the e-stop is closed again, or starts / stops the selected show; Btn2 selects the next stored show, switching to it if one is playing.
 - **Configuration in flash:** per-axis limits, motion profile, automatic amplitude curve (run low/high, hold, corner speeds) and wiring fixes (reverse direction, swap coils) survive power cycles. Two sectors are written alternately with a generation counter and CRC, so an interrupted save keeps the previous configuration.
 - **Streamed PVT:** the host sends position/velocity/time points, and each axis follows a cubic through them. A 10-axis wave streamed at 20 ms per point tracked the ideal curve within 0.0005 steps. Running out of points while moving brakes safely.
 - **Telemetry:** up to 1 kHz with selectable axes and fields (position, speed, mode, amplitude, PVT queue, plus motor voltage, ladder, stop state and the last applied command). Each line is numbered so a host can detect drops. Event lines report finished moves, PVT underruns and stops. At 1 kHz with every field on 10 axes, no lines were dropped and core 0 was 39% busy.
@@ -137,6 +138,7 @@ python3 tools/stepperctl group 1 arc -200 0 360
 python3 tools/stepperctl telem --hz 200 --axes 1,2 --seconds 5 > log.csv
 python3 tools/stepperctl show upload tools/shows/wave.json --slot 2
 python3 tools/stepperctl show run 2          # show list / show stop
+python3 tools/stepperctl boot 2 && python3 tools/stepperctl save   # run show 2 at power-up
 ```
 
 ```python

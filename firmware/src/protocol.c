@@ -367,6 +367,14 @@ static void handle_frame(const uint8_t *buf, uint32_t len) {
         r.ok &= app_save_config() == NULL;
         post_cmd = false;
         break;
+    case PROTO_BOOT_SHOW: {
+        uint8_t slot = rd_u8(&r);
+        r.ok &= slot < SHOW_SLOTS || slot == 0xff;
+        if (r.ok)
+            app_set_boot_show(slot == 0xff ? -1 : slot);
+        post_cmd = false;
+        break;
+    }
     case PROTO_DRIVE:
         c.type = CMD_DRIVE;
         c.axes = rd_u16(&r);

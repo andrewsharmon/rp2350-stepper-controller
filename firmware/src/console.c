@@ -62,6 +62,7 @@ static const char help_text[] =
     "  dir <ax> fwd|rev      reverse rotation      coils <ax> ab|ba  swap coils\n"
     "  cfg                   show the configuration    save  write it to flash\n"
     "  show list | run <n> | stop   shows in flash slots 1-4 (upload with stepperctl)\n"
+    "  boot <n>|off          show to run at power-up (save to keep it)\n"
     "  defaults              restore defaults (until saved)\n"
     "  t <hz>                telemetry lines per second (0 = off, max 1000)\n"
     "  ta <ax>               telemetry axes (default *)\n"
@@ -198,6 +199,8 @@ static void print_config(void) {
                d->flags & CONFIG_FLAG_REVERSE ? "rev" : "fwd", d->flags & CONFIG_FLAG_SWAP_COILS ? "ba" : "ab",
                changed ? "  (not saved)" : "");
     }
+    if (saved->boot_show < SHOW_SLOTS)
+        printf("  boot show: %u\n", saved->boot_show + 1);
 }
 
 static void run_line(char *buf) {
@@ -372,6 +375,14 @@ static void run_line(char *buf) {
         } else {
             goto usage;
         }
+    } else if (strcmp(cmd, "boot") == 0 && argc == 2) {
+        long k = strtol(argv[1], NULL, 10);
+        if (strcmp(argv[1], "off") == 0)
+            app_set_boot_show(-1);
+        else if (k >= 1 && k <= SHOW_SLOTS)
+            app_set_boot_show((int)k - 1);
+        else
+            goto usage;
     } else if (strcmp(cmd, "cfg") == 0) {
         print_config();
     } else if (strcmp(cmd, "save") == 0) {

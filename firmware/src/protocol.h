@@ -36,6 +36,7 @@
 //   0x33 DRIVE                           axes u16, amp_low f32, amp_high f32, amp_hold f32,
 //                                        low_speed f32, high_speed f32, flags u8
 //                                        (amplitudes 0..1; flags: 1 reverse, 2 swap coils)
+//   0x34 BOOT_SHOW                       slot u8 (0xff: none); save to keep it
 //   0x40 TELEMETRY                       rate_hz u16 (0 off), axes u16, fields u8, sys u8, events u8
 //   0x50 SHOW_BEGIN                      slot u8 (0-3), len u32: start an upload
 //   0x51 SHOW_DATA                       offset u32, bytes...
@@ -80,6 +81,7 @@ enum {
     PROTO_GROUP_CREATE = 0x20, PROTO_GROUP_RELEASE, PROTO_GROUP_LINE, PROTO_GROUP_ARC,
     PROTO_GROUP_HOLD, PROTO_GROUP_STOP,
     PROTO_AMPLITUDE = 0x30, PROTO_CLEAR_STOP, PROTO_CONFIG_SAVE, PROTO_DRIVE,
+    PROTO_BOOT_SHOW,
     PROTO_TELEMETRY = 0x40,
     PROTO_SHOW_BEGIN = 0x50, PROTO_SHOW_DATA, PROTO_SHOW_END, PROTO_SHOW_RUN, PROTO_SHOW_STOP,
     PROTO_SHOW_LIST, PROTO_SHOW_ERASE,

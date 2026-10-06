@@ -18,6 +18,7 @@
   python3 tools/stepperctl save                      # limits, profiles, drive -> flash
   python3 tools/stepperctl show upload tools/shows/wave.json --slot 1
   python3 tools/stepperctl show list|run 1|stop|erase 1
+  python3 tools/stepperctl boot 2|off && python3 tools/stepperctl save   # standalone boot show
   python3 tools/stepperctl telem --hz 100 --seconds 5 --fields pos,vel --axes 1,2 > log.csv
 
 Group ids are 1-4 here (0-3 on the wire).
@@ -79,6 +80,7 @@ def main():
     p = sub.add_parser("amp"); p.add_argument("value")
     sub.add_parser("clear")
     sub.add_parser("save")
+    p = sub.add_parser("boot"); p.add_argument("slot")
     p = sub.add_parser("show"); p.add_argument("action"); p.add_argument("arg", nargs="?")
     p.add_argument("--slot", type=int, default=1)
     p = sub.add_parser("drive"); p.add_argument("axes")
@@ -160,6 +162,8 @@ def run(c, a):
             c.show_erase(int(a.arg) - 1)
         else:
             sys.exit(f"unknown show action {a.action}")
+    elif a.cmd == "boot":
+        c.boot_show(None if a.slot == "off" else int(a.slot) - 1)
     elif a.cmd == "save":
         c.save_config()
         print("saved")

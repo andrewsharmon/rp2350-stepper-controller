@@ -5,7 +5,9 @@
 // file) sets everything up, then runs the USB console (console.c), the
 // status LEDs, the stress test and the core 1 watchdog.
 //
-// Ladder buttons: Btn1 stops all axes, Btn2 toggles the stress test.
+// Standalone mode (standalone.h): an optional boot show starts at power-up;
+// Btn1 clears a latched stop or starts / stops the selected show, Btn2
+// selects (or switches to) the next stored show.
 //
 // LEDs: pixel 0 is the general status, pixels 1-10 show each axis (green
 // forward, blue reverse, brighter = faster; dim white holding; grey stopped
@@ -25,6 +27,8 @@
 #include "hbridge.h"
 #include "led.h"
 #include "player.h"
+#include "show_store.h"
+#include "standalone.h"
 #include "trig.h"
 
 #define POWER_UP_SETTLE_MS 100
@@ -49,6 +53,8 @@ static bool stress;
 static uint32_t stress_start;
 static bool tripped;  // core 1 watchdog fired
 static config_t config;   // as loaded / last saved
+static int selected_slot = -1;   // the show Btn1 starts
+static int pending_slot = -1;    // start once the axes are at rest and outputs on
 static bool config_from_flash;
 // Core 0 idle: time spent waiting for serial input (USB interrupts that run
 // during the wait count as idle, so core 0 load reads slightly low).
@@ -76,6 +82,81 @@ void app_set_stress(bool on) {
 
 const config_t *app_config(void) {
     return &config;
+}
+
+void app_set_boot_show(int slot) {
+    config.boot_show = slot < 0 ? 0xff : (uint8_t)slot;
+    if (slot >= 0)
+        selected_slot = slot;
+}
+
+static uint32_t valid_slots(void) {
+    uint32_t mask = 0;
+    for (uint32_t k = 0; k < SHOW_SLOTS; k++) {
+        uint32_t len;
+        show_t s;
+        const uint8_t *blob = show_store_blob(k, &len);
+        if (blob && !show_parse(&s, blob, len, NUM_MOTORS, LED_CHAIN))
+            mask |= 1u << k;
+    }
+    return mask;
+}
+
+static void start_show(int slot) {
+    app_set_stress(false);
+    const char *err = player_start((uint32_t)slot);
+    if (err)
+        printf("show %d not started: %s\n", slot + 1, err);
+    else
+        selected_slot = slot;
+}
+
+static void on_button(int button) {
+    sa_state_t st = {
+        .stop_latched = !control_outputs_on,
+        .line_idle = control_ladder.raw_prev != LADDER_ESTOP && control_ladder.raw_prev != LADDER_FAULT,
+        .running = player_slot(),
+        .selected = selected_slot,
+        .valid = valid_slots(),
+    };
+    sa_result_t r = sa_button(&st, button, SHOW_SLOTS);
+    switch (r.action) {
+    case SA_CLEAR:
+        control_clear_request = true;
+        break;
+    case SA_START:
+        start_show(r.slot);
+        break;
+    case SA_STOP:
+        player_stop();
+        pending_slot = -1;
+        break;
+    case SA_SWITCH:
+        player_stop();
+        pending_slot = selected_slot = r.slot;
+        break;
+    case SA_SELECT:
+        selected_slot = r.slot;
+        break;
+    case SA_NONE:
+        break;
+    }
+    printf("btn%d: %s\n", button, r.action == SA_CLEAR ? "clear stop" : r.action == SA_START ? "start show" :
+           r.action == SA_STOP ? "stop show" : r.action == SA_SWITCH ? "switch show" :
+           r.action == SA_SELECT ? "select show" : "nothing to do");
+}
+
+// A boot or switched-to show starts once the axes are at rest.
+static void poll_pending(void) {
+    if (pending_slot < 0 || player_slot() >= 0 || !control_outputs_on)
+        return;
+    control_snapshot_t s;
+    control_snapshot(&s);
+    if (s.settled_mask != CONTROL_ALL_AXES)
+        return;
+    int slot = pending_slot;
+    pending_slot = -1;
+    start_show(slot);
 }
 
 const char *app_save_config(void) {
@@ -119,6 +200,11 @@ void app_print_status(void) {
         printf("config: defaults (nothing saved yet)\n");
     if (player_slot() >= 0)
         printf("show %d: %s\n", player_slot() + 1, player_state());
+    else if (pending_slot >= 0)
+        printf("show %d: waiting for the axes to be at rest%s\n", pending_slot + 1,
+               control_outputs_on ? "" : " and the stop to be cleared");
+    if (config.boot_show < SHOW_SLOTS)
+        printf("boot show: %d\n", config.boot_show + 1);
     printf("%s%s%s\n", tripped ? "WATCHDOG TRIPPED (X to reboot)" :
                        control_outputs_on ? "running" : "STOPPED (c to clear)",
            control_manual_amp >= 0.0f ? ", manual amplitude" : "", stress ? ", stress test" : "");
@@ -244,6 +330,11 @@ int main(void) {
     sleep_ms(POWER_UP_SETTLE_MS);
     control_energized = true;
 
+    // Standalone: queue the boot show (it starts once outputs are on, so a
+    // stop latched at power-up waits for Btn1 to clear it).
+    if (config.boot_show < SHOW_SLOTS)
+        pending_slot = selected_slot = config.boot_show;
+
     uint32_t last_beat = control_heartbeat;
     absolute_time_t beat_seen = get_absolute_time();
     bool was_on = true;
@@ -281,15 +372,13 @@ int main(void) {
         }
         if (control_ladder.btn1_presses != btn1_seen) {
             btn1_seen = control_ladder.btn1_presses;
-            app_set_stress(false);
-            control_cmd_t c = {.type = CMD_STOP, .axes = CONTROL_ALL_AXES};
-            control_post(&c);
-            printf("btn1: stop all\n");
+            on_button(1);
         }
         if (control_ladder.btn2_presses != btn2_seen) {
             btn2_seen = control_ladder.btn2_presses;
-            app_set_stress(!stress);
+            on_button(2);
         }
+        poll_pending();
 
         uint32_t beat = control_heartbeat;
         if (beat != last_beat || control_flash_busy) {

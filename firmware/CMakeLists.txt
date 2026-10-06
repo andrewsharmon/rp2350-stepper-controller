@@ -32,6 +32,7 @@ add_executable(stepper
     src/show.c
     src/show_store.c
     src/player.c
+    src/standalone.c
 )
 
 pico_generate_pio_header(stepper ${CMAKE_CURRENT_LIST_DIR}/src/hbridge_pwm.pio)

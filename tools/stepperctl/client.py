@@ -246,6 +246,10 @@ class Client:
         return self.command(P.DRIVE, P.req_drive(self._mask(axes), amp_low, amp_high, amp_hold,
                                                  low_speed, high_speed, reverse, swap_coils))
 
+    def boot_show(self, slot):
+        """Show slot (0-3) to run at power-up, or None; save_config keeps it."""
+        return self.command(P.BOOT_SHOW, struct.pack("<B", 0xFF if slot is None else slot))
+
     def save_config(self):
         """Write limits, profiles and drive settings to flash (axes at rest)."""
         return self.command(P.CONFIG_SAVE)

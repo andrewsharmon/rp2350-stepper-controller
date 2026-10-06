@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -19,6 +19,7 @@
 #include "frame.h"
 #include "config.h"
 #include "show.h"
+#include "standalone.h"
 #include "trig.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
@@ -495,6 +496,40 @@ static void test_show(void) {
     CHECK(show_parse(&s, bl.b, bl.n, 10, 20) != NULL, "axis 13 accepted");
 }
 
+static void test_standalone(void) {
+    sa_state_t st = {.running = -1, .selected = -1, .valid = 0b1010};  // slots 1 and 3
+    CHECK(sa_next_slot(0b1010, -1, 4) == 1 && sa_next_slot(0b1010, 1, 4) == 3 &&
+          sa_next_slot(0b1010, 3, 4) == 1 && sa_next_slot(0, 0, 4) == -1, "next slot");
+
+    sa_result_t r = sa_button(&st, 1, 4);   // nothing selected: first valid
+    CHECK(r.action == SA_START && r.slot == 1, "btn1 start %d/%d", r.action, r.slot);
+    st.selected = 3;
+    r = sa_button(&st, 1, 4);
+    CHECK(r.action == SA_START && r.slot == 3, "btn1 starts the selection");
+    r = sa_button(&st, 2, 4);               // idle: select next, wrapping
+    CHECK(r.action == SA_SELECT && r.slot == 1, "btn2 select %d/%d", r.action, r.slot);
+
+    st.running = 1;
+    r = sa_button(&st, 1, 4);
+    CHECK(r.action == SA_STOP, "btn1 stops a running show");
+    r = sa_button(&st, 2, 4);
+    CHECK(r.action == SA_SWITCH && r.slot == 3, "btn2 switches the running show");
+    st.valid = 0b0010;                      // only the running one exists
+    r = sa_button(&st, 2, 4);
+    CHECK(r.action == SA_NONE, "btn2 with nothing else to switch to");
+
+    // Latched stop: Btn1 clears only once the line is idle; Btn2 does nothing.
+    sa_state_t stop = {.stop_latched = true, .running = -1, .selected = 1, .valid = 0b10};
+    CHECK(sa_button(&stop, 1, 4).action == SA_NONE, "cleared while e-stop still open");
+    stop.line_idle = true;
+    CHECK(sa_button(&stop, 1, 4).action == SA_CLEAR, "btn1 clears");
+    CHECK(sa_button(&stop, 2, 4).action == SA_NONE, "btn2 acted during a stop");
+
+    sa_state_t empty = {.running = -1, .selected = -1};
+    CHECK(sa_button(&empty, 1, 4).action == SA_NONE && sa_button(&empty, 2, 4).action == SA_NONE,
+          "buttons with no shows stored");
+}
+
 static void test_trig(void) {
     double worst = 0, worst_d = 0;
     for (int k = -20000; k <= 20000; k++) {
@@ -880,6 +915,7 @@ int main(void) {
     test_frame();
     test_config();
     test_show();
+    test_standalone();
     test_trig();
     test_motion();
     test_pvt();

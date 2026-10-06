@@ -23,3 +23,4 @@ bool app_stress_on(void);
 // NULL on success, else why the save was refused.
 const char *app_save_config(void);
 const config_t *app_config(void);   // as loaded / last saved
+void app_set_boot_show(int slot);   // -1: none (save to keep it)
