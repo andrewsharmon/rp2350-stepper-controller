@@ -284,6 +284,9 @@ void group_tick(group_t *g, motion_axis_t *axes) {
             g->running = false;
             g->v = 0.0f;
             g->s = 0.0f;
+            // A stop whose queue ran out while braking is complete.
+            if (g->flush_on_stop)
+                g->hold = g->flush_on_stop = false;
             set_axes(g, axes, sg, 0.0f, true);
             return;
         }

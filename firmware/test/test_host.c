@@ -541,6 +541,18 @@ static void test_group(void) {
     run_group(&g, axes, 100000);
     CHECK(axes[0].pos == 0 && axes[1].pos == 0, "after stop, line from current position");
 
+    // Stop when the queue ends before the brake does: the group must not
+    // be left held.
+    int64_t h4[2] = {motion_steps_to_units(30), 0};
+    group_line(&g, axes, h4, 0);
+    for (int n = 0; n < 150; n++) { group_tick(&g, axes); motion_tick(&axes[0]); motion_tick(&axes[1]); }
+    group_stop(&g);
+    run_group(&g, axes, 100000);
+    CHECK(group_idle(&g) && !g.hold && !g.flush_on_stop, "stop at queue end left hold %d", g.hold);
+    group_line(&g, axes, h3, 0);
+    run_group(&g, axes, 100000);
+    CHECK(axes[0].pos == 0 && axes[1].pos == 0, "group stuck after stop at queue end");
+
     // Ownership: release only at rest, then axes are free again.
     CHECK(group_release(&g, axes) && axes[0].group == -1 && axes[0].mode == MODE_IDLE, "release");
     motion_set_velocity(&axes[0], 100);
