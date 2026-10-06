@@ -9051,6 +9051,15 @@
 				)
 			)
 		)
+		(property "LCSC" "C20625731"
+			(at 495.3 165.1 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(property "MPN" "ABM8-272-T3"
 			(at 495.3 165.1 0)
 			(hide yes)

@@ -112,7 +112,7 @@ def controller():
     # Crystal.
     # The design guide's 15 pF / 1k values are tuned for this crystal (10 pF load, ESR <= 50 ohm).
     s.add("Device:Crystal_GND24", "Y", "12MHz", "Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm",
-          {"1": "XIN", "3": "XTAL_OUT", "2": "GND", "4": "GND"}, MPN="ABM8-272-T3",
+          {"1": "XIN", "3": "XTAL_OUT", "2": "GND", "4": "GND"}, LCSC="C20625731", MPN="ABM8-272-T3",
           Note="Abracon, per RP2350 design guide; other crystals need retuning and testing")
     C(s, "15p", "XIN", "GND")
     C(s, "15p", "XTAL_OUT", "GND")
@@ -290,7 +290,7 @@ def io_board(name, title, motor_conn, board_id_r):
     R(s, "3.3k 1%", "PB2", "GND")
 
     # Board ID to GND (pull-up on controller).
-    R(s, board_id_r, "BOARD_ID", "GND", Note="board-ID level; table TBD")
+    R(s, board_id_r, "BOARD_ID", "GND", Note="board-ID level; 5% ok, see hardware/README.md")
 
     flags(s, "GND", "V5", "+5V_EXT", "STRIP_5V")
     return s
@@ -319,8 +319,8 @@ def main():
     boards = [
         controller(),
         driver(),
-        io_board("io_xh", "Stepper controller - tier 3, 28BYJ-48 (JST-XH)", xh_motor, "10k 1%"),
-        io_board("io_sh", "Stepper controller - tier 3, dual 8 mm micro steppers (JST-SH 8P)", sh_motor_pair, "4.7k 1%"),
+        io_board("io_xh", "Stepper controller - tier 3, 28BYJ-48 (JST-XH)", xh_motor, "10k"),
+        io_board("io_sh", "Stepper controller - tier 3, dual 8 mm micro steppers (JST-SH 8P)", sh_motor_pair, "4.7k"),
     ]
     for b in boards:
         singles = b.write(os.path.join(OUT, b.name))

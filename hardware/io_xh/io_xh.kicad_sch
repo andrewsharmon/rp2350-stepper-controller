@@ -6084,7 +6084,7 @@
 				)
 			)
 		)
-		(property "Value" "10k 1%"
+		(property "Value" "10k"
 			(at 43.18 154.13 0)
 			(effects
 				(font
@@ -6110,7 +6110,7 @@
 				)
 			)
 		)
-		(property "Note" "board-ID level; table TBD"
+		(property "Note" "board-ID level; 5% ok, see hardware/README.md"
 			(at 43.18 147.32 0)
 			(hide yes)
 			(effects

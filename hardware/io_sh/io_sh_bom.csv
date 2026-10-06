@@ -21,5 +21,5 @@
 "R2","20k 1%","Resistor_SMD:R_0402_1005Metric","1","","",""
 "R3","10k 1%","Resistor_SMD:R_0402_1005Metric","1","","",""
 "R4","3.3k 1%","Resistor_SMD:R_0402_1005Metric","1","","",""
-"R5","4.7k 1%","Resistor_SMD:R_0402_1005Metric","1","","","board-ID level; table TBD"
+"R5","4.7k","Resistor_SMD:R_0402_1005Metric","1","","","board-ID level; 5% ok, see hardware/README.md"
 "U1","74AHCT1G125","Package_TO_SOT_SMD:SOT-23-5","1","SN74AHCT1G125DBVR","C7484",""

@@ -5781,7 +5781,7 @@
 				)
 			)
 		)
-		(property "Value" "4.7k 1%"
+		(property "Value" "4.7k"
 			(at 302.26 131.27 0)
 			(effects
 				(font
@@ -5807,7 +5807,7 @@
 				)
 			)
 		)
-		(property "Note" "board-ID level; table TBD"
+		(property "Note" "board-ID level; 5% ok, see hardware/README.md"
 			(at 302.26 124.46 0)
 			(hide yes)
 			(effects

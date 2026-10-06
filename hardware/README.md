@@ -28,7 +28,7 @@ connectors at opposite edges. No screws: the enclosure captures the stack.
 
 - MCU: **RP2354B** (QFN-80, 48 GPIO, 2 MB in-package flash). Run the ARM cores (FPU).
 - 12 MHz crystal, core-regulator inductor and decoupling per the RP2350 hardware design guide.
-  - Crystal: Abracon ABM8-272-T3 (10 pF load, ESR <= 50 ohm). The guide's 15 pF / 1 k values are tuned for it; other crystals need retuning and testing.
+  - Crystal: Abracon ABM8-272-T3 (C20625731, 10 pF load, ESR <= 50 ohm). The guide's 15 pF / 1 k values are tuned for it; other crystals need retuning and testing.
   - Inductor: Abracon AOTA-B201610S3R3-101-T has a polarity dot. Lay it out in the same orientation as the Pico 2.
 - USB-C receptacle with THT shell legs. The enclosure supports the receptacle so plug forces never reach the BTBs.
 - CC1 / CC2: 5.1 k pull-downs, also routed to ADC (GPIO40/41) to read the source current advertisement.
@@ -81,7 +81,7 @@ AT8833CQ QFN-16 pinout: 1 AISEN, 2 AOUT2, 3 BOUT2, 4 BISEN, 5 BOUT1, 6 nFAULT,
   - Data: 74AHCT1G125 buffer (powered from V5), then a 33-100 ohm series resistor.
   - Strip power, chosen by footprint: shared V5 through a polyfuse, or a separate LED power input.
 - E-stop jack and panel buttons, in parallel with the ladder.
-- Board ID: one resistor to GND, read through the controller pull-up on GPIO43. Current values: io_xh 10 k, io_sh 4.7 k. Full 8-level table TBD.
+- Board ID: one resistor to GND, read through the controller pull-up on GPIO43. See the board-ID table below.
 
 ## Interconnect (BTB)
 
@@ -105,7 +105,20 @@ AT8833CQ QFN-16 pinout: 1 AISEN, 2 AOUT2, 3 BOUT2, 4 BISEN, 5 BOUT1, 6 nFAULT,
 | A | motors 1-5 inputs (20), 6x GND, 3x V5, 3V3 | motors 1-5 outputs (20), 7x GND, 3x V5 |
 | B | motors 6-10 inputs (20), 3x V5, 3x GND, VMOT_SENSE, BOARD_ID, LADDER, LED_DATA | motors 6-10 outputs (20), 3x V5, 4x GND, BOARD_ID, LADDER, LED_DATA |
 
-**Board ID:** the 10 k pull-up to 3V3 is on the controller. Each tier-3 variant fits one resistor to GND. With no tier 3 attached, the line reads 3.3 V.
+**Board ID:** the 10 k 1% pull-up to 3V3 is on the controller. Each tier-3 variant fits one resistor to GND, 5% is fine. With no tier 3 attached, the line reads 3.3 V.
+
+The values are common 0402 parts. Ranges are worst case for a 5% ID resistor and the 1% pull-up; adjacent levels stay at least 249 mV apart, and the thresholds sit midway between ranges.
+
+| ID resistor | Nominal | Range (mV) | Threshold above (mV) | Board |
+|---|---|---|---|---|
+| 0 ohm | 0 mV | 0 | 150 | |
+| 1 k | 300 mV | 284-316 | 440 | |
+| 2.2 k | 595 mV | 566-624 | 820 | |
+| 4.7 k | 1055 mV | 1012-1098 | 1350 | io_sh (dual 8 mm micro steppers) |
+| 10 k | 1650 mV | 1599-1699 | 1960 | io_xh (28BYJ-48) |
+| 22 k | 2269 mV | 2225-2310 | 2500 | |
+| 47 k | 2721 mV | 2691-2749 | 3020 | |
+| not fitted | 3300 mV | 3300 | - | no tier 3 attached |
 
 ## GPIO map (RP2354B)
 
@@ -185,7 +198,6 @@ Part data:
 
 Open items:
 
-- Board-ID table.
 - Soft-start: measure the inrush on the first boards and adjust the 100 nF / 100 k if needed.
-- ABM8-272-T3 LCSC number not checked yet.
+- ABM8-272-T3 (C20625731): check whether JLCPCB stocks it as basic or extended.
 - PCB layout.
