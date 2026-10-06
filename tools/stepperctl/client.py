@@ -251,8 +251,13 @@ class Client:
         return self.command(P.BOOT_SHOW, struct.pack("<B", 0xFF if slot is None else slot))
 
     def save_config(self):
-        """Write limits, profiles and drive settings to flash (axes at rest)."""
-        return self.command(P.CONFIG_SAVE)
+        """Write limits, profiles, drive settings and loaded cam tables to flash
+        (axes at rest). Several sector writes: allow longer than a command."""
+        old_timeout, self.timeout = self.timeout, 3.0
+        try:
+            return self.command(P.CONFIG_SAVE)
+        finally:
+            self.timeout = old_timeout
 
     # --- cams (tables 0-3; leaders: axis number 1-10 or "v1"/"v2") ---------------------
 

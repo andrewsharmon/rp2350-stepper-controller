@@ -149,7 +149,7 @@ static void send_pong(uint16_t seq) {
 }
 
 static void send_status(uint16_t seq) {
-    control_snapshot_t s;
+    static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
     writer_t w = {0};
     bool on = control_outputs_on;
@@ -259,7 +259,7 @@ static void send_show_info(uint16_t seq) {
 
 // Flash writes pause core 1: only with every axis at rest.
 static bool flash_write_ok(void) {
-    control_snapshot_t s;
+    static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
     return player_slot() < 0 && (!control_outputs_on || s.settled_mask == CONTROL_ALL_AXES);
 }
@@ -278,7 +278,7 @@ static bool store(uint32_t slot, const uint8_t *data, uint32_t len) {
 static float cam_x[CAM_TABLES][CAM_MAX_POINTS], cam_y[CAM_TABLES][CAM_MAX_POINTS];
 
 static void send_cam_info(uint16_t seq) {
-    control_snapshot_t s;
+    static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
     writer_t w = {0};
     wr_u8(&w, s.cams_loaded);

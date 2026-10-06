@@ -45,7 +45,7 @@ const char *player_start(uint32_t s) {
     if (!control_outputs_on)
         return "outputs are stopped (clear first)";
 
-    control_snapshot_t snap;
+    static control_snapshot_t snap;  // ~1 KB: off core 0's stack
     control_snapshot(&snap);
     axis_mask = 0;
     for (uint32_t t = 0; t < show.n_tracks; t++)
@@ -128,7 +128,7 @@ void player_poll(uint32_t now_us) {
         slot = -1;
         return;
     }
-    control_snapshot_t snap;
+    static control_snapshot_t snap;  // ~1 KB: off core 0's stack
     control_snapshot(&snap);
 
     if (state == PREP) {

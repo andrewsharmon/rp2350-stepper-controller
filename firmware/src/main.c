@@ -20,6 +20,7 @@
 
 #include "adc_monitor.h"
 #include "board_pins.h"
+#include "cam_store.h"
 #include "config.h"
 #include "console.h"
 #include "protocol.h"
@@ -151,7 +152,7 @@ static void on_button(int button) {
 static void poll_pending(void) {
     if (pending_slot < 0 || player_slot() >= 0 || !control_outputs_on)
         return;
-    control_snapshot_t s;
+    static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
     if (s.settled_mask != CONTROL_ALL_AXES)
         return;
@@ -161,7 +162,7 @@ static void poll_pending(void) {
 }
 
 const char *app_save_config(void) {
-    control_snapshot_t s;
+    static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
     // Writing flash pauses core 1 for tens of ms while the DMA keeps
     // replaying the ring. At rest every queued period drives the same
@@ -179,6 +180,14 @@ const char *app_save_config(void) {
     }
     control_flash_busy = true;  // pauses the core 1 watchdog
     bool ok = config_save(&c);
+    // Cam tables mirror what is loaded: loaded ones are stored, the rest
+    // cleared (unchanged sectors aren't rewritten). The staging copies match
+    // the loaded tables: core 0 only changes them through control_cam_load.
+    for (uint32_t k = 0; ok && k < CAM_TABLES; k++) {
+        const cam_table_t *t = &control_cam_staging[k];
+        bool loaded = s.cams_loaded & (1u << k);
+        ok = cam_store_write(k, t->x, t->y, loaded ? t->n : 0, t->cyclic);
+    }
     control_flash_busy = false;
     if (!ok)
         return "flash write failed";
@@ -237,7 +246,7 @@ void app_print_status(void) {
 // Pixel 0: green running, blue all holding, red blinking e-stop, magenta
 // blinking driver fault, solid red watchdog trip, amber ladder bypassed.
 static void update_leds(void) {
-    control_snapshot_t s;
+    static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
     bool blink = (time_us_32() / 250000) & 1;
     bool on = control_outputs_on;
@@ -320,6 +329,14 @@ int main(void) {
     adc_monitor_init();
     config_from_flash = config_load(&config);
     control_init(&config);
+    // Saved cam tables; core 1 loads them on its first tick.
+    for (uint32_t k = 0; k < CAM_TABLES; k++) {
+        static float x[CAM_MAX_POINTS], y[CAM_MAX_POINTS];
+        uint32_t n;
+        bool cyclic;
+        if (cam_store_read(k, x, y, &n, &cyclic))
+            control_cam_load(k, x, y, n, cyclic);
+    }
     sleep_us(100);  // a few ADC rounds before core 1 starts judging the ladder
     hbridge_start(motors, NUM_MOTORS);
     TRACE("PIO started\n");

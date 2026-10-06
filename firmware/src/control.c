@@ -78,8 +78,10 @@ void control_init(const config_t *cfg) {
         drive[i] = a->drive;
     }
     hold_delay_ms = cfg->hold_delay_ms;
-    for (int i = 0; i < NUM_MOTORS; i++)
+    for (int i = 0; i < NUM_MOTORS; i++) {
         follow[i].table = -1;
+        snap_buf.cam_table[i] = -1;  // read by core 0 before core 1's first publish
+    }
     for (int k = 0; k < VIRTUAL_LEADERS; k++) {
         motion_init(&vlead[k], 1000.0f, 2000.0f);
         motion_set_profile(&vlead[k], PROFILE_TRAP, 0);  // followers add no lag either
@@ -102,7 +104,7 @@ const char *control_cam_load(uint32_t table, const float *x, const float *y, uin
     static uint32_t pending_seq[CAM_TABLES];
     if (table >= CAM_TABLES)
         return "no such cam table";
-    control_snapshot_t s;
+    static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
     if (pending_seq[table] && (int32_t)(s.last_seq - pending_seq[table]) < 0)
         return "previous load of this table still pending";
@@ -119,7 +121,7 @@ const char *control_cam_load(uint32_t table, const float *x, const float *y, uin
 
 const char *control_cam_engage_check(uint32_t mask, uint32_t table, uint32_t leader) {
     static char msg[200];
-    control_snapshot_t s;
+    static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
     if (table >= CAM_TABLES || !(s.cams_loaded & (1u << table)))
         return "cam table not loaded";

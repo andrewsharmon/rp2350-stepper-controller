@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -21,6 +21,7 @@
 #include "show.h"
 #include "standalone.h"
 #include "cam.h"
+#include "cam_store.h"
 #include "trig.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
@@ -608,6 +609,20 @@ static void test_cam(void) {
     fol.ext_moving = true;
     motion_tick(&fol);
     CHECK(fol.pos == motion_steps_to_units(1), "follower lagged its leader");
+
+    // Flash record round trip; corruption and blank flash are rejected.
+    uint8_t rec[CAM_RECORD_MAX];
+    float rx[CAM_MAX_POINTS], ry[CAM_MAX_POINTS];
+    uint32_t rn;
+    bool rc;
+    uint32_t len = cam_store_pack(rec, x, y, 17, true);
+    CHECK(len == 16 + 17 * 8, "record length %u", len);
+    CHECK(cam_store_unpack(rec, len, rx, ry, &rn, &rc) && rn == 17 && rc &&
+          memcmp(rx, x, sizeof(float) * 17) == 0 && memcmp(ry, y, sizeof(float) * 17) == 0, "record round trip");
+    rec[40] ^= 4;
+    CHECK(!cam_store_unpack(rec, len, rx, ry, &rn, &rc), "corrupt record accepted");
+    memset(rec, 0xff, sizeof rec);
+    CHECK(!cam_store_unpack(rec, sizeof rec, rx, ry, &rn, &rc), "erased flash accepted");
 
     // Bad tables.
     float bx[3] = {0, 10, 10};

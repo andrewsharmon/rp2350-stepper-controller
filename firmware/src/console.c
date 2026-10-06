@@ -13,6 +13,7 @@
 #include "player.h"
 #include "protocol.h"
 #include "show_store.h"
+#include "cam_store.h"
 #include "led.h"
 
 #define LINE_MAX      160
@@ -64,7 +65,7 @@ static const char help_text[] =
     "  amp auto|<percent>    drive amplitude: automatic curve, or fixed\n"
     "  drive <ax> <low%> <high%> <hold%> [low_spd high_spd]  automatic amplitude curve\n"
     "  dir <ax> fwd|rev      reverse rotation      coils <ax> ab|ba  swap coils\n"
-    "  cfg                   show the configuration    save  write it to flash\n"
+    "  cfg                   show the configuration    save  write it (and cam tables) to flash\n"
     "  show list | run <n> | stop   shows in flash slots 1-4 (upload with stepperctl)\n"
     "  boot <n>|off          show to run at power-up (save to keep it)\n"
     "  defaults              restore defaults (until saved)\n"
@@ -152,7 +153,7 @@ static void post(control_cmd_t *c) {
 }
 
 static void print_axes(void) {
-    control_snapshot_t s;
+    static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
     printf("  ax  mode  position        speed    amp  vmax   amax  profile\n");
     for (int i = 0; i < NUM_MOTORS; i++) {
@@ -202,7 +203,7 @@ static void print_axes(void) {
 }
 
 static void print_config(void) {
-    control_snapshot_t s;
+    static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
     const config_t *saved = app_config();
     printf("  ax   vmax    amax  profile      amp low/high/hold   speeds      dir  coils\n");
@@ -220,6 +221,22 @@ static void print_config(void) {
     }
     if (saved->boot_show < SHOW_SLOTS)
         printf("  boot show: %u\n", saved->boot_show + 1);
+    printf("  cam tables saved:");
+    bool any = false;
+    for (uint32_t k = 0; k < CAM_TABLES; k++) {
+        static float x[CAM_MAX_POINTS], y[CAM_MAX_POINTS];
+        uint32_t n;
+        bool cyclic;
+        if (cam_store_read(k, x, y, &n, &cyclic)) {
+            printf(" %lu (%lu points%s)", (unsigned long)k + 1, (unsigned long)n, cyclic ? ", cyclic" : "");
+            any = true;
+        }
+    }
+    printf("%s; loaded:", any ? "" : " none");
+    for (uint32_t k = 0; k < CAM_TABLES; k++)
+        if (s.cams_loaded & (1u << k))
+            printf(" %lu", (unsigned long)k + 1);
+    printf("%s\n", s.cams_loaded ? "" : " none");
 }
 
 static void run_line(char *buf) {
@@ -500,7 +517,7 @@ static void run_line(char *buf) {
         if (!drive_cmd && strcmp(argv[2], "fwd") && strcmp(argv[2], "rev") &&
             strcmp(argv[2], "ab") && strcmp(argv[2], "ba"))
             goto usage;
-        control_snapshot_t s;
+        static control_snapshot_t s;  // ~1 KB: off core 0's stack
         control_snapshot(&s);
         for (int i = 0; i < NUM_MOTORS; i++) {
             if (!(mask & (1u << i)))
@@ -821,7 +838,7 @@ void console_telemetry(uint32_t now_us) {
     bool line_due = telem_period_us && now_us - telem_last_us >= telem_period_us;
     if (!line_due && !events_on)
         return;
-    control_snapshot_t s;
+    static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
     print_events(&s);
     if (!line_due)

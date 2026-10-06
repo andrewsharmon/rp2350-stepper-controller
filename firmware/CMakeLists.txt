@@ -25,6 +25,7 @@ add_executable(stepper
     src/motion.c
     src/group.c
     src/cam.c
+    src/cam_store.c
     src/control.c
     src/console.c
     src/frame.c
@@ -42,6 +43,10 @@ pico_generate_pio_header(stepper ${CMAKE_CURRENT_LIST_DIR}/src/ws2812.pio)
 
 set(NUM_MOTORS 10 CACHE STRING "Number of motors driven (1-10)")
 target_compile_definitions(stepper PRIVATE NUM_MOTORS=${NUM_MOTORS})
+# Core 0 runs deep call chains (binary protocol -> config / cam save -> flash).
+# 4 KB fills SCRATCH_Y; the stack guards turn any overflow into a fault (the
+# watchdog then cuts the outputs) instead of silent memory corruption.
+target_compile_definitions(stepper PRIVATE PICO_STACK_SIZE=0x1000 PICO_USE_STACK_GUARDS=1)
 option(LADDER_BYPASS "Ignore the e-stop/button ladder (bench only, no ladder wired)" OFF)
 if(LADDER_BYPASS)
     target_compile_definitions(stepper PRIVATE LADDER_BYPASS)
