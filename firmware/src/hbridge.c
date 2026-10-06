@@ -135,6 +135,7 @@ void hbridge_safe_off(hbridge_t *hb) {
         gpio_put(hb->pin_base + i, 0);
         gpio_set_dir(hb->pin_base + i, GPIO_OUT);
         gpio_set_function(hb->pin_base + i, GPIO_FUNC_SIO);
+        gpio_set_input_enabled(hb->pin_base + i, false);  // see hbridge_pwm_program_init
     }
     pio_sm_set_enabled(hb->pio, hb->sm, false);
     dma_channel_abort(hb->dma_ch);

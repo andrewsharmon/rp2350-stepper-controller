@@ -24,8 +24,13 @@ static inline void hbridge_pwm_program_init(PIO pio, uint sm, uint offset, uint 
                                             uint pin_count, float clkdiv) {
     pio_sm_set_enabled(pio, sm, false);
     pio_sm_clear_fifos(pio, sm);
-    for (uint i = 0; i < pin_count; i++)
+    // Motor pins are never read. Input buffers off: with them on, an
+    // undriven pin can latch near 2.2 V on RP2350 A2 (erratum E9), which
+    // the AT8833 reads as high.
+    for (uint i = 0; i < pin_count; i++) {
         pio_gpio_init(pio, pin_base + i);
+        gpio_set_input_enabled(pin_base + i, false);
+    }
     if (pin_count) {
         pio_sm_set_pins_with_mask64(pio, sm, 0, 0xfull << pin_base);  // coast until running
         pio_sm_set_consecutive_pindirs(pio, sm, pin_base, pin_count, true);

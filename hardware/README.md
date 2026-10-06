@@ -131,7 +131,7 @@ PIO allocation:
 | PIO2 | SM2 | WS2812 |
 | PIO2 | SM3 | Spare |
 
-Use external pull-ups on all inputs (RP2350-E9 erratum).
+Use external pull-ups on all inputs on A2 silicon (RP2350-E9 erratum; fixed from A3).
 
 ## Ladder on GPIO44
 
@@ -160,7 +160,7 @@ A held button hides an open e-stop (e-stop open + Btn1 = 1.65 V, + Btn2 = 0.82 V
 - PWM frequency is about 20 kHz. The AT8833 input deglitch (about 450 ns) sets a minimum pulse of about 0.5 us, roughly 1% duty. Firmware dithers duties below that.
 - Wait about 100 ms after power-up before energizing motors (V5 soft-start settling).
 - USB budget comes from CC; brownout guard from VMOTOR_SENSE.
-- AT8833 inputs read >= 2 V as high and have 100 k pull-downs. After a reset, a GPIO that was high can sit near 2 V (RP2350-E9), which could turn a bridge on while nSLEEP is high. Not handled yet: firmware should drive the motor pins low before a reset it triggers, but a watchdog reset can't be caught that way, so a hardware fix (e.g. stronger pull-downs, <= ~8.2 k, if the GPIO drive allows) is still open.
+- RP2350-E9 (a GPIO with its input buffer on can sit near 2.2 V, which the AT8833's >= 2 V VIH reads as high) needs no hardware fix on the motor inputs. It is fixed in silicon from A3 (A4 is the production stepping; order A4). On A2 it can't occur after a power-on or RUN reset (input enable starts clear), and the firmware turns the motor pins' input buffers off (they are never read), so they stay off across a watchdog reset whether or not it resets the pads. The AT8833's 100 k pull-downs are enough.
 - Tier 3: the NO_ESTOP jumper ships bridged. It must be cut when an e-stop is fitted, or the e-stop does nothing. Mark this on the silkscreen.
 
 ## Schematics and BOM
