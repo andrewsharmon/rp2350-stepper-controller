@@ -80,11 +80,12 @@ const config_t *app_config(void) {
 const char *app_save_config(void) {
     control_snapshot_t s;
     control_snapshot(&s);
-    // Writing flash pauses core 1 for tens of ms. At rest every queued PWM
-    // period is the same hold pattern, so the DMA replaying the ring
-    // meanwhile just keeps holding; while moving it would not.
-    if (control_outputs_on && s.holding_mask != CONTROL_ALL_AXES)
-        return "all axes must be at rest and holding";
+    // Writing flash pauses core 1 for tens of ms while the DMA keeps
+    // replaying the ring. At rest every queued period drives the same
+    // electrical phase (only the amplitude may still be easing to hold),
+    // so the coils just keep holding; while moving, the rotor would jerk.
+    if (control_outputs_on && s.settled_mask != CONTROL_ALL_AXES)
+        return "all axes must be at rest";
     config_t c = config;
     for (int i = 0; i < NUM_MOTORS; i++) {
         c.axis[i].vmax = s.vmax[i];
