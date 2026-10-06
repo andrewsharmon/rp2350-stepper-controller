@@ -189,6 +189,47 @@ static void test_ladder(void) {
     CHECK(l.btn2_presses == 1 && l.btn1_presses == 0, "btn2 presses %u, btn1 %u",
           l.btn2_presses, l.btn1_presses);
     CHECK(!l.stop_latched, "button latched a stop");
+
+    // Releasing Btn1 passes through the masked band briefly: no stop.
+    for (uint32_t end = t + 30000; t < end; t += 10)
+        ladder_update(&l, 1320, t);
+    for (uint32_t end = t + 1000; t < end; t += 10)
+        ladder_update(&l, 1650, t);
+    for (uint32_t end = t + 30000; t < end; t += 10)
+        ladder_update(&l, 2200, t);
+    CHECK(!l.stop_latched, "Btn1 release latched a stop");
+    CHECK(l.btn1_presses == 1, "btn1 presses %u", l.btn1_presses);
+
+    // E-stop opens while Btn1 is held: latches within LADDER_MASKED_US, and
+    // can't be cleared (or counted as a press) while it persists.
+    for (uint32_t end = t + 30000; t < end; t += 10)
+        ladder_update(&l, 1320, t);
+    start = t;
+    tripped = 0;
+    for (int k = 0; k < 1000 && !tripped; k++)
+        tripped = ladder_update(&l, 1650, t += 10);
+    CHECK(tripped && t - start <= LADDER_MASKED_US + 20, "masked e-stop latency %u us", t - start);
+    CHECK(l.stop_cause == LADDER_ESTOP, "masked stop cause %s", ladder_level_name(l.stop_cause));
+    for (uint32_t end = t + 30000; t < end; t += 10)
+        ladder_update(&l, 1650, t);
+    CHECK(!ladder_clear_stop(&l), "cleared while masked");
+    CHECK(l.btn1_presses == 2, "masked hold counted as press: %u", l.btn1_presses);
+    for (uint32_t end = t + 30000; t < end; t += 10)
+        ladder_update(&l, 2200, t);
+    CHECK(ladder_clear_stop(&l), "could not clear after masked stop");
+
+    // E-stop open while Btn2 is held (0.82 V, inside the Btn2 band): caught by
+    // the hold limit, not before.
+    for (uint32_t end = t + LADDER_BUTTON_MAX_US - 1000; t < end; t += 100)
+        ladder_update(&l, 820, t);
+    CHECK(!l.stop_latched, "Btn2 hold latched early");
+    for (uint32_t end = t + 2000; t < end; t += 100)
+        ladder_update(&l, 820, t);
+    CHECK(l.stop_latched && l.stop_cause == LADDER_ESTOP, "Btn2 hold limit did not latch");
+    CHECK(!ladder_clear_stop(&l), "cleared while button still held");
+    for (uint32_t end = t + 30000; t < end; t += 10)
+        ladder_update(&l, 2200, t);
+    CHECK(ladder_clear_stop(&l), "could not clear after hold release");
 }
 
 typedef struct {

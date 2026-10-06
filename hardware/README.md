@@ -153,6 +153,8 @@ Use external pull-ups on all inputs (RP2350-E9 erratum).
 
 Use 1% resistors. Thresholds sit midway between the levels; debounce over 2-3 samples.
 
+A held button hides an open e-stop (e-stop open + Btn1 = 1.65 V, + Btn2 = 0.82 V). Firmware latches a stop on 1.49-1.76 V held 5 ms, or on any button held over 3 s; see `firmware/src/ladder.h`.
+
 ## Electrical notes
 
 - PWM frequency is about 20 kHz. The AT8833 input deglitch (about 450 ns) sets a minimum pulse of about 0.5 us, roughly 1% duty. Firmware dithers duties below that.
@@ -185,6 +187,5 @@ Open items:
 
 - Board-ID table.
 - Soft-start: measure the inrush on the first boards and adjust the 100 nF / 100 k if needed.
-- Ladder: a held button masks an open e-stop (e-stop open + Btn1 reads 1.65 V = Btn1). Firmware should only accept a button after the idle level, or the e-stop moves off the ladder.
 - ABM8-272-T3 LCSC number not checked yet.
 - PCB layout.

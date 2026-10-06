@@ -585,6 +585,12 @@ flowchart TD
 
 * **Stop latency** is about 30 µs. The ladder is also polled inside the
   per-period loop, not just once per tick.
+* **A held button can hide an open e-stop:** e-stop open + Btn1 reads
+  1.65 V and e-stop open + Btn2 reads 0.82 V, both inside the button bands.
+  The 1.49–1.76 V band, held for 5 ms, latches an e-stop. Btn2's case is too
+  close to Btn2 alone to split, so any button held longer than 3 s latches
+  an e-stop (this also catches a stuck button). Neither counts as a press,
+  and the stop can't be cleared until the line is back to idle.
 * **Core 1 watchdog:** core 0 watches `control_heartbeat`. If it stops (and
   no flash write is in progress), all outputs go to coast.
 * **PIO starvation** fails to brake, as described in section 10.
