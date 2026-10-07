@@ -2396,6 +2396,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 116.84 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 116.84 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -2477,6 +2495,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 167.64 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 167.64 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -2541,6 +2577,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 218.44 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 218.44 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
 			(at 218.44 40.64 0)
 			(hide yes)
 			(effects
@@ -2683,6 +2737,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 317.5 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 317.5 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -2747,6 +2819,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 368.3 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C170151"
+			(at 368.3 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A225KO5NQNC"
 			(at 368.3 40.64 0)
 			(hide yes)
 			(effects
@@ -3085,6 +3175,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 492.76 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 492.76 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -3166,6 +3274,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 43.18 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 43.18 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -3230,6 +3356,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 91.44 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 91.44 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
 			(at 91.44 86.36 0)
 			(hide yes)
 			(effects
@@ -3372,6 +3516,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 193.04 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 193.04 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -3436,6 +3598,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 241.3 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C170151"
+			(at 241.3 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A225KO5NQNC"
 			(at 241.3 86.36 0)
 			(hide yes)
 			(effects
@@ -3774,6 +3954,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 368.3 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 368.3 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -3855,6 +4053,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 416.56 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 416.56 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -3919,6 +4135,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 467.36 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 467.36 86.36 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
 			(at 467.36 86.36 0)
 			(hide yes)
 			(effects
@@ -4061,6 +4295,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 43.18 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 43.18 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -4125,6 +4377,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 91.44 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C170151"
+			(at 91.44 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A225KO5NQNC"
 			(at 91.44 129.54 0)
 			(hide yes)
 			(effects
@@ -4463,6 +4733,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 218.44 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 218.44 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -4544,6 +4832,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 266.7 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 266.7 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -4608,6 +4914,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 317.5 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 317.5 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
 			(at 317.5 129.54 0)
 			(hide yes)
 			(effects
@@ -4750,6 +5074,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 416.56 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 416.56 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -4814,6 +5156,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 467.36 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C170151"
+			(at 467.36 129.54 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A225KO5NQNC"
 			(at 467.36 129.54 0)
 			(hide yes)
 			(effects
@@ -5152,6 +5512,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 116.84 175.26 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 116.84 175.26 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -5233,6 +5611,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 167.64 175.26 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 167.64 175.26 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -5297,6 +5693,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 218.44 175.26 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 218.44 175.26 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
 			(at 218.44 175.26 0)
 			(hide yes)
 			(effects
@@ -5439,6 +5853,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 317.5 175.26 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 317.5 175.26 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -5503,6 +5935,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 368.3 175.26 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C170151"
+			(at 368.3 175.26 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A225KO5NQNC"
 			(at 368.3 175.26 0)
 			(hide yes)
 			(effects
@@ -5841,6 +6291,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 492.76 175.26 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 492.76 175.26 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -5922,6 +6390,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 43.18 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 43.18 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -5986,6 +6472,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 91.44 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 91.44 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
 			(at 91.44 220.98 0)
 			(hide yes)
 			(effects
@@ -6128,6 +6632,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 193.04 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 193.04 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -6192,6 +6714,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 241.3 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C170151"
+			(at 241.3 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A225KO5NQNC"
 			(at 241.3 220.98 0)
 			(hide yes)
 			(effects
@@ -6530,6 +7070,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 368.3 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 368.3 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -6611,6 +7169,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 416.56 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 416.56 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -6675,6 +7251,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 467.36 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 467.36 220.98 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
 			(at 467.36 220.98 0)
 			(hide yes)
 			(effects
@@ -6817,6 +7411,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 43.18 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 43.18 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -6881,6 +7493,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 91.44 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C170151"
+			(at 91.44 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A225KO5NQNC"
 			(at 91.44 264.16 0)
 			(hide yes)
 			(effects
@@ -7219,6 +7849,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 218.44 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 218.44 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -7300,6 +7948,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 266.7 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 266.7 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -7364,6 +8030,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 317.5 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 317.5 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
 			(at 317.5 264.16 0)
 			(hide yes)
 			(effects
@@ -7506,6 +8190,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 416.56 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 416.56 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -7570,6 +8272,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 467.36 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C170151"
+			(at 467.36 264.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A225KO5NQNC"
 			(at 467.36 264.16 0)
 			(hide yes)
 			(effects
@@ -7908,6 +8628,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 116.84 309.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 116.84 309.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -7989,6 +8727,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 167.64 309.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 167.64 309.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -8053,6 +8809,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 218.44 309.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 218.44 309.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
 			(at 218.44 309.88 0)
 			(hide yes)
 			(effects
@@ -8195,6 +8969,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 317.5 309.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 317.5 309.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -8259,6 +9051,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 368.3 309.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C170151"
+			(at 368.3 309.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A225KO5NQNC"
 			(at 368.3 309.88 0)
 			(hide yes)
 			(effects
@@ -8597,6 +9407,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 492.76 309.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 492.76 309.88 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -8678,6 +9506,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C728435"
+			(at 43.18 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "RL0402FR-070R82L"
+			(at 43.18 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -8742,6 +9588,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 91.44 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 91.44 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
 			(at 91.44 353.06 0)
 			(hide yes)
 			(effects
@@ -8884,6 +9748,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 193.04 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 193.04 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -8948,6 +9830,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 241.3 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C170151"
+			(at 241.3 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A225KO5NQNC"
 			(at 241.3 353.06 0)
 			(hide yes)
 			(effects
@@ -9028,6 +9928,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C15850"
+			(at 292.1 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL21A106KAYNNNE"
+			(at 292.1 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -9092,6 +10010,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 342.9 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C15850"
+			(at 342.9 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL21A106KAYNNNE"
 			(at 342.9 353.06 0)
 			(hide yes)
 			(effects
@@ -9172,6 +10108,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C15850"
+			(at 391.16 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL21A106KAYNNNE"
+			(at 391.16 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -9236,6 +10190,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 441.96 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25792"
+			(at 441.96 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF4702TCE"
 			(at 441.96 353.06 0)
 			(hide yes)
 			(effects
@@ -9316,6 +10288,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25783"
+			(at 492.76 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF3902TCE"
+			(at 492.76 353.06 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -9388,6 +10378,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25744"
+			(at 43.18 375.92 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF1002TCE"
+			(at 43.18 375.92 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "driver"
 				(path "/dab97b24-1e6e-5a35-9daa-92d685288960"
@@ -9452,6 +10460,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 91.44 375.92 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 91.44 375.92 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
 			(at 91.44 375.92 0)
 			(hide yes)
 			(effects

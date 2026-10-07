@@ -21,12 +21,13 @@ def snap(v):
 
 
 class Part:
-    def __init__(self, lib_id, ref, value, footprint="", nets=None, fields=None, dnp=False):
+    def __init__(self, lib_id, ref, value, footprint="", nets=None, fields=None, dnp=False, in_bom=True):
         self.lib_id, self.ref, self.value = lib_id, ref, value
         self.footprint = footprint
         self.nets = nets or {}
         self.fields = fields or {}
         self.dnp = dnp
+        self.in_bom = in_bom
 
 
 class Schematic:
@@ -39,6 +40,7 @@ class Schematic:
 
     def add(self, lib_id, prefix, value, footprint="", nets=None, ref=None, **fields):
         dnp = fields.pop("dnp", False)
+        in_bom = fields.pop("in_bom", True)
         used = {p.ref for p in self.parts}
         if ref is None:
             while ref is None or ref in used:
@@ -46,7 +48,7 @@ class Schematic:
                 ref = f"{prefix}{self.counters[prefix]}"
         elif ref in used:
             raise ValueError(f"duplicate reference {ref}")
-        p = Part(lib_id, ref, value, footprint, nets, fields, dnp)
+        p = Part(lib_id, ref, value, footprint, nets, fields, dnp, in_bom)
         self.parts.append(p)
         return p
 
@@ -90,7 +92,7 @@ class Schematic:
         for p, sx, sy, pins, ymin, ymax in placed:
             sym = [Sym("symbol"), [Sym("lib_id"), p.lib_id], [Sym("at"), sx, sy, 0], [Sym("unit"), 1],
                    [Sym("exclude_from_sim"), Sym("no")],
-                   [Sym("in_bom"), Sym("yes")], [Sym("on_board"), Sym("yes")],
+                   [Sym("in_bom"), Sym("yes" if p.in_bom else "no")], [Sym("on_board"), Sym("yes")],
                    [Sym("dnp"), Sym("yes" if p.dnp else "no")],
                    [Sym("uuid"), self._uuid()]]
             sym.append(self._prop("Reference", p.ref, sx, sy - ymax - 3))

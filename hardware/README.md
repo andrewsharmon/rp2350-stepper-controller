@@ -41,7 +41,7 @@ connectors at opposite edges. No screws: the enclosure captures the stack.
 - WS2812-class addressable LED on GPIO45. Its DOUT continues down the stack as LED_DATA.
   - Powered from V5 (needs >= 3.7 V). The 3.3 V data goes through a 74AHCT1G125 on V5 to meet VIH = 0.7 VDD.
 - Buttons:
-  - BOOTSEL (also readable at runtime), TS-1187A, right edge below connector B.
+  - BOOTSEL (also readable at runtime), TS-1187A, right edge below connector B. The single boards use the TS-1088-AR02016 instead (same part as Btn1/Btn2).
   - Btn1 and Btn2 on the analog ladder (see below): XUNPU TS-1088-AR02016 (C720477, 3.9 x 3.0 mm, 2 pads), stacked in the top-right corner. They started over the BTB headers for rigidity, but their pads blocked the connector fan-out, so the case should support the board under them.
 - SWD test pads.
 
@@ -176,6 +176,27 @@ A held button hides an open e-stop (e-stop open + Btn1 = 1.65 V, + Btn2 = 0.82 V
 - RP2350-E9 (a GPIO with its input buffer on can sit near 2.2 V, which the AT8833's >= 2 V VIH reads as high) needs no hardware fix on the motor inputs. It is fixed in silicon from A3 (A4 is the production stepping; order A4). On A2 it can't occur after a power-on or RUN reset (input enable starts clear), and the firmware turns the motor pins' input buffers off (they are never read), so they stay off across a watchdog reset whether or not it resets the pads. The AT8833's 100 k pull-downs are enough.
 - Tier 3: the NO_ESTOP jumper ships bridged. It must be cut when an e-stop is fitted, or the e-stop does nothing. Mark this on the silkscreen.
 
+## Single board (`single_sh`)
+
+Controller, driver and the `io_sh` connectors on one PCB, from the `single_sh/` schematic (`single()` in `gen/build.py`). Fully routed: 0 unconnected, no DRC errors, schematic parity clean.
+
+- **122 x 20 mm**, 4 layers, 1.6 mm thick. All parts on top; only the THT legs of the USB-C and the JST-PH/XH connectors come through.
+- Layers: F.Cu parts and signals, In1 solid GND, In2 V5, B.Cu signals. In2 has a 3V3 island under the MCU, joined to the LDO by a thin finger along the -y edge.
+- Along the board: USB-C (mouth on the short edge) and power path | drivers M4 M3 M2 M1 | MCU | drivers M10 M9 M8 M7 M6 M5 | LED strip connector.
+  - Motor connectors run along one long edge in the order J12 J11 | J15 J14 J13, so each motor bus leaves the MCU in pin order and never crosses itself.
+  - Qwiic x2, BOOTSEL, e-stop, panel buttons, 5 V in, status LED and LED power run along the other long edge, above the drivers.
+- Driver cell: AT8833 rotated so its outputs face the connector. VINT/VM/VCP caps sit above it; the sense resistors sit below, each with its own GND via.
+  - The connector's pin order (B2 B1 A2 A1, left to right) runs against the driver's (A1 A2 B2 B1), so A1/A2 hop over B1/B2 on short In2 jumpers (4 vias per motor).
+  - Swapping this board's connector pin assignment (pins 1-2 = coil B, pins 3-4 = coil A reversed) would remove the jumpers, if firmware maps coil order and polarity per board. Not done, because the cable pinout would then differ from `io_sh`.
+- V5 enters the In2 plane through via clusters at the soft-start FET, the external 5 V diode and the LED-strip fuse.
+- Layout source: `single_sh()` in `gen/pcbgen.py` (placement and zones).
+  - The driver cells and the core regulator were pre-routed by script. The rest was routed with Freerouting 2.5.0 plus a small grid router.
+  - Those routing scripts are not in the repo; the board is hand-edited from here.
+- Silkscreen: reference designators are hidden (too dense).
+  - Motor numbers sit above each connector; function labels are on top where they fit, otherwise on the underside.
+  - The underside also carries the NO_ESTOP cut warning.
+  - The 24 remaining DRC warnings are footprint silk outlines overlapping each other or the board edge.
+
 ## Schematics and BOM
 
 Schematics are generated. Edit `gen/build.py`, not the `.kicad_sch` files.
@@ -185,7 +206,7 @@ python3 gen/footprints.py   # project footprints -> lib/stack.pretty
 python3 gen/build.py        # schematics
 ```
 
-The controller PCB was started by `gen/pcbgen.py`, run once with KiCad's Python
+The controller and `single_sh` PCBs were started by `gen/pcbgen.py <board>`, run once with KiCad's Python
 (it needs `pcbnew`); it refuses to overwrite an existing board. It set up the
 outline, stackup, JLCPCB rules and net classes, and a first placement of every
 part. From there the layout is edited by hand in KiCad.
@@ -197,16 +218,27 @@ part. From there the layout is edited by hand in KiCad.
 Outputs:
 
 - `controller/`, `driver/`, `io_xh/` (28BYJ-48), `io_sh/` (micro steppers): one KiCad schematic each.
+- `single_xh/`, `single_sh/`: the whole circuit (controller + driver + that IO variant) on one board, with the BTB connectors removed and their nets joined directly. `single_sh` has a routed PCB (see above); `single_xh` is schematic only.
 - Each part's pins are connected by net labels.
-- `*_bom.csv` in each folder, exported with `kicad-cli sch export bom`.
+- `*_bom.csv` in each folder, exported with `kicad-cli sch export bom` (grouped by value, footprint, LCSC, MPN and note).
 
 Part data:
 
-- Passives are generic (value + footprint).
-- The LCSC field is only set on parts whose number was checked on lcsc.com.
+- Every BOM line has an LCSC number, checked against the JLCPCB parts library on 2026-10-07 (part, package, rating, stock). Passives take theirs from `PASSIVES` in `gen/build.py`.
+- JLCPCB basic parts where one exists. Extended lines: RP2354B, AT8833CQ, 3.3 uH inductor, crystal, ESD diode, LDO, AHCT buffer, status LED, polyfuse, USB-C, the JST connectors, and three passives:
+  - 2.2 uF VM caps: the only basic 0402 2.2 uF is rated 6.3 V, so a 16 V part is used on the 5 V motor rail.
+  - 0.82 ohm sense resistors: no basic part exists.
+  - 27 ohm USB series resistors and the 39 k VMOT_SENSE divider resistor: no basic 0402 part exists.
+- Solder jumpers and test pads are excluded from the BOM and from the placement file (they are copper only).
 
 Open items:
 
 - Soft-start: measure the inrush on the first boards and adjust the 100 nF / 100 k if needed.
-- ABM8-272-T3 (C20625731): check whether JLCPCB stocks it as basic or extended.
-- PCB layout: controller fully routed (0 unconnected; silkscreen labels still to tidy); driver and tier-3 boards not started. Routing used Freerouting 2.5.0 plus a small grid router for the last nets; neither is part of the repo.
+- Stock to watch (JLCPCB, 2026-10-07):
+  - AOTA-B201610S3R3-101-T inductor: 677 in stock.
+  - RP2354B: about 1.7k in stock.
+  - Polyfuse: 1.97k in stock. Ruilon C702823 isn't in JLCPCB's library, so PTTC SMD1812P150TF/8 (C209721) is used.
+  - Status LED: the Worldsemi WS2812B-2020 (C965555) had 1 in stock, so the XINGLIGHT XL-2020RGBC-WS2812B (C5349955) is used. It has the same pinout and footprint.
+- Sense resistors: the in-stock 0402 0.82 ohm parts are rated 62.5 mW, which is fine at <= 0.2 A per coil (33 mW). Running continuously at the AT8833 current-limit trip (0.24-0.29 A, up to 69 mW) is over rating; use 0603 if the limit will be hit.
+- LED PWR (J6) is a JST-PH rated 2 A per pin, which caps a separately powered strip at 2 A unless the connector changes.
+- PCB layout: controller fully routed (0 unconnected; silkscreen labels still to tidy); `single_sh` fully routed (unreviewed); driver and tier-3 boards not started. Routing used Freerouting 2.5.0 plus a small grid router for the last nets; neither is part of the repo.

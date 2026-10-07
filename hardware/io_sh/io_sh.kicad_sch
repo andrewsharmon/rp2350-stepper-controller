@@ -4984,6 +4984,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C52923"
+			(at 525.78 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
+			(at 525.78 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "io_sh"
 				(path "/5b793915-917f-5dea-8a71-76fe07733c1b"
@@ -5176,6 +5194,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 119.38 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 119.38 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "io_sh"
 				(path "/5b793915-917f-5dea-8a71-76fe07733c1b"
@@ -5240,6 +5276,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 170.18 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25105"
+			(at 170.18 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF330JTCE"
 			(at 170.18 104.14 0)
 			(hide yes)
 			(effects
@@ -5320,7 +5374,7 @@
 				)
 			)
 		)
-		(property "MPN" "SMD1812P150TF"
+		(property "MPN" "SMD1812P150TF/8"
 			(at 220.98 104.14 0)
 			(hide yes)
 			(effects
@@ -5329,7 +5383,16 @@
 				)
 			)
 		)
-		(property "LCSC" "C702823"
+		(property "LCSC" "C209721"
+			(at 220.98 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Note" "PTTC; 1.5 A hold / 3 A trip, 8 V"
 			(at 220.98 104.14 0)
 			(hide yes)
 			(effects
@@ -5372,7 +5435,7 @@
 		(at 274.32 99.06 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "1373b0e7-b136-51a3-b1da-fabf18f0e70b")
@@ -5690,6 +5753,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C15850"
+			(at 429.26 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL21A106KAYNNNE"
+			(at 429.26 104.14 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "io_sh"
 				(path "/5b793915-917f-5dea-8a71-76fe07733c1b"
@@ -5814,7 +5895,7 @@
 		(at 48.26 134.62 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "e0fe0ed2-74b6-5769-b3b8-49469c742084")
@@ -5933,6 +6014,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25765"
+			(at 101.6 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF2002TCE"
+			(at 101.6 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "io_sh"
 				(path "/5b793915-917f-5dea-8a71-76fe07733c1b"
@@ -5997,6 +6096,15 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 157.48 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C131339"
 			(at 157.48 137.16 0)
 			(hide yes)
 			(effects
@@ -6105,6 +6213,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25744"
+			(at 203.2 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF1002TCE"
+			(at 203.2 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "io_sh"
 				(path "/5b793915-917f-5dea-8a71-76fe07733c1b"
@@ -6169,6 +6295,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 251.46 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25890"
+			(at 251.46 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF3301TCE"
 			(at 251.46 137.16 0)
 			(hide yes)
 			(effects
@@ -6250,6 +6394,24 @@
 			)
 		)
 		(property "Note" "board-ID level; 5% ok, see hardware/README.md"
+			(at 302.26 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25900"
+			(at 302.26 137.16 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF4701TCE"
 			(at 302.26 137.16 0)
 			(hide yes)
 			(effects

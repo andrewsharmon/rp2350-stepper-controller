@@ -1,9 +1,10 @@
-"""Generate the three stack schematics.
+"""Generate the three stack schematics and the single-board versions.
 
-    python3 build.py        # writes ../controller, ../driver, ../io_xh, ../io_sh
+    python3 build.py        # writes ../controller, ../driver, ../io_xh, ../io_sh,
+                            # and the one-board versions ../single_xh, ../single_sh
 
-Passives are generic (value + footprint); the LCSC field is only set on
-parts whose LCSC number was checked.
+Passives get their LCSC / MPN from PASSIVES below; the LCSC field is only set
+on parts whose number was checked (JLCPCB parts library, 2026-10-07).
 """
 
 import os
@@ -76,12 +77,43 @@ def add_btb(sch, ref, nets, part, note):
             {str(i + 1): n for i, n in enumerate(nets) if n}, ref=ref, MPN=mpn, LCSC=lcsc, Note=note)
 
 
+# (value, footprint) -> (LCSC, MPN). JLCPCB basic parts unless marked extended.
+# Resistors are UNI-ROYAL 0402WGF thick film, 1 %, 62.5 mW.
+PASSIVES = {
+    ("100n", C0402): ("C1525", "CL05B104KO5NNNC"),       # 16 V X7R
+    ("1u", C0402): ("C52923", "CL05A105KA5NQNC"),        # 25 V X5R
+    ("2.2u", C0402): ("C170151", "CL05A225KO5NQNC"),     # 16 V X5R, extended (basic 2.2u is 6.3 V)
+    ("4.7u", C0402): ("C23733", "CL05A475MP5NRNC"),      # 10 V X5R
+    ("15p", C0402): ("C1548", "0402CG150J500NT"),        # 50 V C0G
+    ("10u", C0805): ("C15850", "CL21A106KAYNNNE"),       # 25 V X5R
+    ("0.82", R0402): ("C728435", "RL0402FR-070R82L"),    # Yageo 1 %, 62.5 mW, extended (no basic 0.82R)
+    ("27", R0402): ("C25100", "0402WGF270JTCE"),         # extended
+    ("33", R0402): ("C25105", "0402WGF330JTCE"),
+    ("1k", R0402): ("C11702", "0402WGF1001TCE"),
+    ("3.3k 1%", R0402): ("C25890", "0402WGF3301TCE"),
+    ("4.7k", R0402): ("C25900", "0402WGF4701TCE"),
+    ("5.1k", R0402): ("C25905", "0402WGF5101TCE"),
+    ("10k", R0402): ("C25744", "0402WGF1002TCE"),
+    ("10k 1%", R0402): ("C25744", "0402WGF1002TCE"),
+    ("20k 1%", R0402): ("C25765", "0402WGF2002TCE"),
+    ("39k 1%", R0402): ("C25783", "0402WGF3902TCE"),     # extended
+    ("47k", R0402): ("C25792", "0402WGF4702TCE"),
+    ("100k", R0402): ("C25741", "0402WGF1003TCE"),
+}
+
+
+def passive(sch, lib_id, prefix, value, fp, nets, kw):
+    if "LCSC" not in kw and (value, fp) in PASSIVES:
+        kw["LCSC"], kw["MPN"] = PASSIVES[(value, fp)]
+    return sch.add(lib_id, prefix, value, fp, nets, **kw)
+
+
 def R(sch, value, a, b, fp=R0402, **kw):
-    return sch.add("Device:R", "R", value, fp, {"1": a, "2": b}, **kw)
+    return passive(sch, "Device:R", "R", value, fp, {"1": a, "2": b}, kw)
 
 
 def C(sch, value, a, b, fp=C0402, **kw):
-    return sch.add("Device:C", "C", value, fp, {"1": a, "2": b}, **kw)
+    return passive(sch, "Device:C", "C", value, fp, {"1": a, "2": b}, kw)
 
 
 def flags(sch, *nets):
@@ -93,8 +125,10 @@ def flags(sch, *nets):
 # Tier 1: controller
 # ---------------------------------------------------------------------------
 
-def controller():
-    s = Schematic("controller", "Stepper controller - tier 1 (RP2354B)")
+def controller(s=None):
+    stacked = s is None
+    if stacked:
+        s = Schematic("controller", "Stepper controller - tier 1 (RP2354B)")
 
     mcu = {}
     for g in range(40):
@@ -149,7 +183,7 @@ def controller():
     # Power path: VBUS -> PTC -> Schottky -> V5_IN -> soft-start switch -> V5 bus.
     # The 3.3 V LDO runs from V5_IN, ahead of the switch.
     s.add("Device:Polyfuse", "F", "1.5A hold", "Fuse:Fuse_1812_4532Metric", {"1": "VBUS", "2": "VBUS_F"},
-          MPN="SMD1812P150TF", LCSC="C702823", Note="choose low resistance; alt C21002")
+          MPN="SMD1812P150TF/8", LCSC="C209721", Note="PTTC; 1.5 A hold / 3 A trip, 8 V; alt C21002")
     s.add("Device:D_Schottky", "D", "SS54", SMA, {"2": "VBUS_F", "1": "V5_IN"},
           LCSC="C22452", MPN="SS54", Note="MDD; Vf 0.55 V @ 5 A")
     C(s, "10u", "V5_IN", "GND", C0805)
@@ -174,11 +208,11 @@ def controller():
         s.add("Connector_Generic:Conn_01x04", "J", "Qwiic", "Connector_JST:JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical",
               {"1": "GND", "2": "QWIIC_3V3", "3": "SDA", "4": "SCL"}, LCSC="C160390", MPN="BM04B-SRSS-TB")
     s.add("Jumper:SolderJumper_2_Open", "JP", "QWIIC_SUPPLY", JP_OPEN, {"1": "+3V3", "2": "QWIIC_3V3"},
-          Note="bridge to power downstream Qwiic devices")
+          Note="bridge to power downstream Qwiic devices", in_bom=False)
     R(s, "4.7k", "SDA", "I2C_PU")
     R(s, "4.7k", "SCL", "I2C_PU")
     s.add("Jumper:SolderJumper_2_Bridged", "JP", "I2C_PU", JP_BRIDGED, {"1": "I2C_PU", "2": "+3V3"},
-          Note="cut to remove I2C pull-ups")
+          Note="cut to remove I2C pull-ups", in_bom=False)
 
     # Analog ladder: e-stop load lives on tier 3; fault pulls to 0 V.
     R(s, "10k 1%", "+3V3", "LADDER")
@@ -192,9 +226,16 @@ def controller():
           Note="XUNPU 3.9x3.0 mm 2-pad; small so the BTB fan-out routes")
     R(s, "3.3k 1%", "BTN2_N", "GND")
 
-    # BOOTSEL (readable at runtime via QSPI_SS).
-    s.add("Switch:SW_Push", "SW", "BOOTSEL", "Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A",
-          {"1": "QSPI_SS", "2": "BOOT_R"}, LCSC="C318884", MPN="TS-1187A-B-A-B")
+    # BOOTSEL (readable at runtime via QSPI_SS). The single boards use the same
+    # small button as BTN1/BTN2; the stacked controller keeps the TS-1187A it
+    # was laid out with.
+    if stacked:
+        s.add("Switch:SW_Push", "SW", "BOOTSEL", "Button_Switch_SMD:SW_Push_1P1T_XKB_TS-1187A",
+              {"1": "QSPI_SS", "2": "BOOT_R"}, LCSC="C318884", MPN="TS-1187A-B-A-B")
+    else:
+        s.add("Switch:SW_Push", "SW", "BOOTSEL", "Button_Switch_SMD:SW_SPST_TS-1088-xR020",
+              {"1": "QSPI_SS", "2": "BOOT_R"}, LCSC="C720477", MPN="TS-1088-AR02016",
+              Note="XUNPU 3.9x3.0 mm 2-pad, same as BTN1/BTN2")
     R(s, "1k", "BOOT_R", "GND")
 
     # Board-ID pull-up: tier 3 provides the resistor to GND (none fitted -> 3.3 V).
@@ -206,18 +247,20 @@ def controller():
     s.add("74xGxx:74AHCT1G125", "U", "74AHCT1G125", SOT23_5,
           {"1": "GND", "2": "LED_DIN", "3": "GND", "4": "LED_DIN_5V", "5": "V5"}, LCSC="C7484", MPN="SN74AHCT1G125DBVR")
     C(s, "100n", "V5", "GND")
-    s.add("LED:WS2812B-2020", "D", "WS2812B-2020", "LED_SMD:LED_WS2812B-2020_PLCC4_2.0x2.0mm",
-          {"VDD": "V5", "VSS": "GND", "DIN": "LED_DIN_5V", "DOUT": "LED_DATA"}, LCSC="C965555", MPN="WS2812B-2020")
+    s.add("LED:WS2812B-2020", "D", "XL-2020RGBC-WS2812B", "LED_SMD:LED_WS2812B-2020_PLCC4_2.0x2.0mm",
+          {"VDD": "V5", "VSS": "GND", "DIN": "LED_DIN_5V", "DOUT": "LED_DATA"}, LCSC="C5349955",
+          MPN="XL-2020RGBC-WS2812B",
+          Note="XINGLIGHT; WS2812B-2020 pinout and footprint; Worldsemi C965555 was out of stock at JLCPCB")
     C(s, "100n", "V5", "GND")
 
     # Debug pads.
     for net in ["SWCLK", "SWDIO", "RUN", "GND", "+3V3"]:
-        s.add("Connector:TestPoint", "TP", net, TP, {"1": net})
+        s.add("Connector:TestPoint", "TP", net, TP, {"1": net}, in_bom=False)
 
-    add_btb(s, "J10", btb_a("in", True), BTB_HEADER, "connector A, board underside")
-    add_btb(s, "J11", btb_b("in", True), BTB_HEADER, "connector B, board underside; offset placement keys stack")
-
-    flags(s, "GND", "V5", "V5_IN", "+1V1", "VREG_AVDD", "VBUS")
+    if stacked:
+        add_btb(s, "J10", btb_a("in", True), BTB_HEADER, "connector A, board underside")
+        add_btb(s, "J11", btb_b("in", True), BTB_HEADER, "connector B, board underside; offset placement keys stack")
+        flags(s, "GND", "V5", "V5_IN", "+1V1", "VREG_AVDD", "VBUS")
     return s
 
 
@@ -225,8 +268,10 @@ def controller():
 # Tier 2: universal driver
 # ---------------------------------------------------------------------------
 
-def driver():
-    s = Schematic("driver", "Stepper controller - tier 2 (10x AT8833CQ)")
+def driver(s=None):
+    stacked = s is None
+    if stacked:
+        s = Schematic("driver", "Stepper controller - tier 2 (10x AT8833CQ)")
     for m in range(1, MOTORS + 1):
         u = f"U{m}"
         nets = dict(zip(IN_PINS, motor_nets(m, "in")))
@@ -251,12 +296,12 @@ def driver():
     R(s, "10k 1%", "VMOT_SENSE", "GND")
     C(s, "100n", "VMOT_SENSE", "GND")
 
-    add_btb(s, "J1", btb_a("in", True), BTB_SOCKET, "from controller A, top side")
-    add_btb(s, "J2", btb_b("in", True), BTB_SOCKET, "from controller B, top side")
-    add_btb(s, "J3", btb_a("out", False), BTB_HEADER, "to tier 3 A, board underside")
-    add_btb(s, "J4", btb_b("out", False), BTB_HEADER, "to tier 3 B, board underside")
-
-    flags(s, "GND", "V5", "+3V3")
+    if stacked:
+        add_btb(s, "J1", btb_a("in", True), BTB_SOCKET, "from controller A, top side")
+        add_btb(s, "J2", btb_b("in", True), BTB_SOCKET, "from controller B, top side")
+        add_btb(s, "J3", btb_a("out", False), BTB_HEADER, "to tier 3 A, board underside")
+        add_btb(s, "J4", btb_b("out", False), BTB_HEADER, "to tier 3 B, board underside")
+        flags(s, "GND", "V5", "+3V3")
     return s
 
 
@@ -264,10 +309,12 @@ def driver():
 # Tier 3: connector / IO variants
 # ---------------------------------------------------------------------------
 
-def io_board(name, title, motor_conn, board_id_r):
-    s = Schematic(name, title)
-    add_btb(s, "J1", btb_a("out", False), BTB_SOCKET, "from driver A, top side")
-    add_btb(s, "J2", btb_b("out", False), BTB_SOCKET, "from driver B, top side")
+def io_board(name, title, motor_conn, board_id_r, s=None):
+    stacked = s is None
+    if stacked:
+        s = Schematic(name, title)
+        add_btb(s, "J1", btb_a("out", False), BTB_SOCKET, "from driver A, top side")
+        add_btb(s, "J2", btb_b("out", False), BTB_SOCKET, "from driver B, top side")
 
     for m in range(1, MOTORS + 1):
         motor_conn(s, m)
@@ -285,9 +332,9 @@ def io_board(name, title, motor_conn, board_id_r):
     C(s, "100n", "V5", "GND")
     R(s, "33", "LED_BUF", "STRIP_DIN")
     s.add("Device:Polyfuse", "F", "1.5A hold", "Fuse:Fuse_1812_4532Metric", {"1": "V5", "2": "STRIP_V5_FUSED"},
-          MPN="SMD1812P150TF", LCSC="C702823")
+          MPN="SMD1812P150TF/8", LCSC="C209721", Note="PTTC; 1.5 A hold / 3 A trip, 8 V")
     s.add("Jumper:SolderJumper_2_Bridged", "JP", "STRIP_SHARED", JP_BRIDGED, {"1": "STRIP_V5_FUSED", "2": "STRIP_5V"},
-          Note="cut when strip has its own supply on LED PWR")
+          Note="cut when strip has its own supply on LED PWR", in_bom=False)
     s.add("Connector_Generic:Conn_01x03", "J", "LED STRIP", "Connector_JST:JST_XH_B3B-XH-A_1x03_P2.50mm_Vertical",
           {"1": "STRIP_5V", "2": "STRIP_DIN", "3": "GND"}, LCSC="C144394", MPN="B3B-XH-A")
     s.add("Connector_Generic:Conn_01x02", "J", "LED PWR", "Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical",
@@ -298,19 +345,21 @@ def io_board(name, title, motor_conn, board_id_r):
     s.add("Connector_Generic:Conn_01x02", "J", "E-STOP", "Connector_JST:JST_PH_B2B-PH-K_1x02_P2.00mm_Vertical",
           {"1": "LADDER", "2": "ESTOP_RET"}, LCSC="C131337", MPN="B2B-PH-K-S")
     s.add("Jumper:SolderJumper_2_Bridged", "JP", "NO_ESTOP", JP_BRIDGED, {"1": "LADDER", "2": "ESTOP_RET"},
-          Note="MUST cut when an NC e-stop is fitted, or the e-stop does nothing; silkscreen this")
+          Note="MUST cut when an NC e-stop is fitted, or the e-stop does nothing; silkscreen this", in_bom=False)
     R(s, "20k 1%", "ESTOP_RET", "GND")
 
     # External panel buttons in parallel with the onboard ones.
     s.add("Connector_Generic:Conn_01x03", "J", "PANEL BTN", "Connector_JST:JST_PH_B3B-PH-K_1x03_P2.00mm_Vertical",
-          {"1": "LADDER", "2": "PB1", "3": "PB2"}, MPN="B3B-PH-K-S", Note="button from pin1 to pin2/pin3")
+          {"1": "LADDER", "2": "PB1", "3": "PB2"}, LCSC="C131339", MPN="B3B-PH-K-S",
+          Note="button from pin1 to pin2/pin3")
     R(s, "10k 1%", "PB1", "GND")
     R(s, "3.3k 1%", "PB2", "GND")
 
     # Board ID to GND (pull-up on controller).
     R(s, board_id_r, "BOARD_ID", "GND", Note="board-ID level; 5% ok, see hardware/README.md")
 
-    flags(s, "GND", "V5", "+5V_EXT", "STRIP_5V")
+    if stacked:
+        flags(s, "GND", "V5", "+5V_EXT", "STRIP_5V")
     return s
 
 
@@ -333,12 +382,34 @@ def sh_motor_pair(s, m):
           LCSC="C160394", MPN="BM08B-SRSS-TB")
 
 
+# ---------------------------------------------------------------------------
+# Single board: all three tiers on one PCB, no BTB connectors
+# ---------------------------------------------------------------------------
+
+def single(name, title, motor_conn, board_id_r):
+    """Controller + driver + one IO variant on one board.
+
+    Same circuit as the stack, with the BTBs removed: their nets join directly.
+    The board-ID resistor is kept so firmware identifies the motor connector
+    variant the same way.
+    """
+    s = Schematic(name, title, paper="A1")
+    driver(s)  # fixed refs U1-U10 first; the other parts number around them
+    controller(s)
+    io_board(name, title, motor_conn, board_id_r, s)
+    flags(s, "GND", "V5", "V5_IN", "+1V1", "VREG_AVDD", "VBUS", "+5V_EXT", "STRIP_5V")
+    return s
+
+
 def main():
     boards = [
         controller(),
         driver(),
         io_board("io_xh", "Stepper controller - tier 3, 28BYJ-48 (JST-XH)", xh_motor, "10k"),
         io_board("io_sh", "Stepper controller - tier 3, dual 8 mm micro steppers (JST-SH 8P)", sh_motor_pair, "4.7k"),
+        single("single_xh", "Stepper controller - single board, 28BYJ-48 (JST-XH)", xh_motor, "10k"),
+        single("single_sh", "Stepper controller - single board, dual 8 mm micro steppers (JST-SH 8P)",
+               sh_motor_pair, "4.7k"),
     ]
     for b in boards:
         singles = b.write(os.path.join(OUT, b.name))

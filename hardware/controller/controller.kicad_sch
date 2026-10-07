@@ -8040,6 +8040,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 142.24 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 142.24 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -8104,6 +8122,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 193.04 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 193.04 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
 			(at 193.04 40.64 0)
 			(hide yes)
 			(effects
@@ -8184,6 +8220,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 243.84 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 243.84 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -8248,6 +8302,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 292.1 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 292.1 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
 			(at 292.1 40.64 0)
 			(hide yes)
 			(effects
@@ -8328,6 +8400,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 342.9 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 342.9 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -8392,6 +8482,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 393.7 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 393.7 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
 			(at 393.7 40.64 0)
 			(hide yes)
 			(effects
@@ -8472,6 +8580,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 441.96 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 441.96 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -8536,6 +8662,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 492.76 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 492.76 40.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
 			(at 492.76 40.64 0)
 			(hide yes)
 			(effects
@@ -8616,6 +8760,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 43.18 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 43.18 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -8680,6 +8842,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 91.44 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C23733"
+			(at 91.44 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A475MP5NRNC"
 			(at 91.44 170.18 0)
 			(hide yes)
 			(effects
@@ -8760,6 +8940,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 142.24 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 142.24 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -8824,6 +9022,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 193.04 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 193.04 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
 			(at 193.04 170.18 0)
 			(hide yes)
 			(effects
@@ -8904,6 +9120,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 241.3 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 241.3 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -8968,6 +9202,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 292.1 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C23733"
+			(at 292.1 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A475MP5NRNC"
 			(at 292.1 170.18 0)
 			(hide yes)
 			(effects
@@ -9147,6 +9399,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25105"
+			(at 391.16 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF330JTCE"
+			(at 391.16 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -9211,6 +9481,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 441.96 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C23733"
+			(at 441.96 170.18 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A475MP5NRNC"
 			(at 441.96 170.18 0)
 			(hide yes)
 			(effects
@@ -9410,6 +9698,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1548"
+			(at 43.18 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402CG150J500NT"
+			(at 43.18 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -9482,6 +9788,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1548"
+			(at 91.44 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402CG150J500NT"
+			(at 91.44 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -9546,6 +9870,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 142.24 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C11702"
+			(at 142.24 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF1001TCE"
 			(at 142.24 190.5 0)
 			(hide yes)
 			(effects
@@ -9980,6 +10322,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25100"
+			(at 330.2 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF270JTCE"
+			(at 330.2 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -10044,6 +10404,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 381 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25100"
+			(at 381 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF270JTCE"
 			(at 381 190.5 0)
 			(hide yes)
 			(effects
@@ -10124,6 +10502,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25905"
+			(at 429.26 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF5101TCE"
+			(at 429.26 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -10188,6 +10584,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 480.06 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25905"
+			(at 480.06 190.5 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF5101TCE"
 			(at 480.06 190.5 0)
 			(hide yes)
 			(effects
@@ -10268,7 +10682,7 @@
 				)
 			)
 		)
-		(property "MPN" "SMD1812P150TF"
+		(property "MPN" "SMD1812P150TF/8"
 			(at 530.86 190.5 0)
 			(hide yes)
 			(effects
@@ -10277,7 +10691,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C702823"
+		(property "LCSC" "C209721"
 			(at 530.86 190.5 0)
 			(hide yes)
 			(effects
@@ -10286,7 +10700,7 @@
 				)
 			)
 		)
-		(property "Note" "choose low resistance; alt C21002"
+		(property "Note" "PTTC; 1.5 A hold / 3 A trip, 8 V; alt C21002"
 			(at 530.86 190.5 0)
 			(hide yes)
 			(effects
@@ -10458,6 +10872,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 99.06 243.84 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C15850"
+			(at 99.06 243.84 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL21A106KAYNNNE"
 			(at 99.06 243.84 0)
 			(hide yes)
 			(effects
@@ -10644,6 +11076,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 215.9 243.84 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 215.9 243.84 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
 			(at 215.9 243.84 0)
 			(hide yes)
 			(effects
@@ -10842,6 +11292,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 322.58 243.84 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 322.58 243.84 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -10923,6 +11391,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25741"
+			(at 373.38 243.84 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF1003TCE"
+			(at 373.38 243.84 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -10987,6 +11473,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 421.64 243.84 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C52923"
+			(at 421.64 243.84 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05A105KA5NQNC"
 			(at 421.64 243.84 0)
 			(hide yes)
 			(effects
@@ -11249,7 +11753,7 @@
 		(at 48.26 264.16 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "24c2923c-918e-51de-83dd-f5c212a57cc3")
@@ -11368,6 +11872,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25900"
+			(at 101.6 269.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF4701TCE"
+			(at 101.6 269.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -11440,6 +11962,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25900"
+			(at 152.4 269.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF4701TCE"
+			(at 152.4 269.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -11474,7 +12014,7 @@
 		(at 208.28 264.16 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "1fa443d9-4671-588b-b480-5fb4642ac7de")
@@ -11593,6 +12133,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25744"
+			(at 261.62 269.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF1002TCE"
+			(at 261.62 269.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -11657,6 +12215,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 312.42 269.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C1525"
+			(at 312.42 269.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
 			(at 312.42 269.24 0)
 			(hide yes)
 			(effects
@@ -11836,6 +12412,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25744"
+			(at 421.64 269.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF1002TCE"
+			(at 421.64 269.24 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -12007,6 +12601,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C25890"
+			(at 43.18 289.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF3301TCE"
+			(at 43.18 289.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -12169,6 +12781,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C11702"
+			(at 152.4 289.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF1001TCE"
+			(at 152.4 289.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -12233,6 +12863,24 @@
 			)
 		)
 		(property "Datasheet" ""
+			(at 203.2 289.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "LCSC" "C25744"
+			(at 203.2 289.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "0402WGF1002TCE"
 			(at 203.2 289.56 0)
 			(hide yes)
 			(effects
@@ -12433,6 +13081,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 330.2 289.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 330.2 289.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -12479,7 +13145,7 @@
 				)
 			)
 		)
-		(property "Value" "WS2812B-2020"
+		(property "Value" "XL-2020RGBC-WS2812B"
 			(at 388.62 305.26 0)
 			(effects
 				(font
@@ -12505,7 +13171,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C965555"
+		(property "LCSC" "C5349955"
 			(at 388.62 294.64 0)
 			(hide yes)
 			(effects
@@ -12514,7 +13180,16 @@
 				)
 			)
 		)
-		(property "MPN" "WS2812B-2020"
+		(property "MPN" "XL-2020RGBC-WS2812B"
+			(at 388.62 294.64 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "Note" "XINGLIGHT; WS2812B-2020 pinout and footprint; Worldsemi C965555 was out of stock at JLCPCB"
 			(at 388.62 294.64 0)
 			(hide yes)
 			(effects
@@ -12615,6 +13290,24 @@
 				)
 			)
 		)
+		(property "LCSC" "C1525"
+			(at 444.5 289.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
+		(property "MPN" "CL05B104KO5NNNC"
+			(at 444.5 289.56 0)
+			(hide yes)
+			(effects
+				(font
+					(size 1.27 1.27)
+				)
+			)
+		)
 		(instances
 			(project "controller"
 				(path "/82c1f7b2-ae82-5c44-8c06-5848175dc7a6"
@@ -12649,7 +13342,7 @@
 		(at 495.3 287.02 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "946cc1fe-7f23-5412-9b1e-ef0c934ca42c")
@@ -12711,7 +13404,7 @@
 		(at 43.18 320.04 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "44378ec7-7d43-5838-a639-02236d664d3b")
@@ -12773,7 +13466,7 @@
 		(at 91.44 320.04 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "d87e1042-b8de-5b61-b7a5-df3dbb4dd833")
@@ -12835,7 +13528,7 @@
 		(at 142.24 320.04 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "1a0901c1-c4cd-5b9f-be52-841cde9df86d")
@@ -12897,7 +13590,7 @@
 		(at 193.04 320.04 0)
 		(unit 1)
 		(exclude_from_sim no)
-		(in_bom yes)
+		(in_bom no)
 		(on_board yes)
 		(dnp no)
 		(uuid "3dc51b0c-d725-530d-afb4-37e9ff32a331")
