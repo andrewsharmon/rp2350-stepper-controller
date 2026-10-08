@@ -7149,7 +7149,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 116.84 40.64 0)
 			(hide yes)
 			(effects
@@ -7176,7 +7176,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 116.84 40.64 0)
 			(hide yes)
 			(effects
@@ -7185,7 +7185,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 116.84 40.64 0)
 			(hide yes)
 			(effects
@@ -7248,7 +7248,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 167.64 40.64 0)
 			(hide yes)
 			(effects
@@ -7275,7 +7275,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 167.64 40.64 0)
 			(hide yes)
 			(effects
@@ -7284,7 +7284,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 167.64 40.64 0)
 			(hide yes)
 			(effects
@@ -7928,7 +7928,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 492.76 40.64 0)
 			(hide yes)
 			(effects
@@ -7955,7 +7955,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 492.76 40.64 0)
 			(hide yes)
 			(effects
@@ -7964,7 +7964,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 492.76 40.64 0)
 			(hide yes)
 			(effects
@@ -8027,7 +8027,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 543.56 40.64 0)
 			(hide yes)
 			(effects
@@ -8054,7 +8054,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 543.56 40.64 0)
 			(hide yes)
 			(effects
@@ -8063,7 +8063,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 543.56 40.64 0)
 			(hide yes)
 			(effects
@@ -8707,7 +8707,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 116.84 86.36 0)
 			(hide yes)
 			(effects
@@ -8734,7 +8734,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 116.84 86.36 0)
 			(hide yes)
 			(effects
@@ -8743,7 +8743,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 116.84 86.36 0)
 			(hide yes)
 			(effects
@@ -8806,7 +8806,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 167.64 86.36 0)
 			(hide yes)
 			(effects
@@ -8833,7 +8833,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 167.64 86.36 0)
 			(hide yes)
 			(effects
@@ -8842,7 +8842,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 167.64 86.36 0)
 			(hide yes)
 			(effects
@@ -9486,7 +9486,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 492.76 86.36 0)
 			(hide yes)
 			(effects
@@ -9513,7 +9513,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 492.76 86.36 0)
 			(hide yes)
 			(effects
@@ -9522,7 +9522,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 492.76 86.36 0)
 			(hide yes)
 			(effects
@@ -9585,7 +9585,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 543.56 86.36 0)
 			(hide yes)
 			(effects
@@ -9612,7 +9612,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 543.56 86.36 0)
 			(hide yes)
 			(effects
@@ -9621,7 +9621,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 543.56 86.36 0)
 			(hide yes)
 			(effects
@@ -10265,7 +10265,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 116.84 129.54 0)
 			(hide yes)
 			(effects
@@ -10292,7 +10292,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 116.84 129.54 0)
 			(hide yes)
 			(effects
@@ -10301,7 +10301,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 116.84 129.54 0)
 			(hide yes)
 			(effects
@@ -10364,7 +10364,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 167.64 129.54 0)
 			(hide yes)
 			(effects
@@ -10391,7 +10391,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 167.64 129.54 0)
 			(hide yes)
 			(effects
@@ -10400,7 +10400,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 167.64 129.54 0)
 			(hide yes)
 			(effects
@@ -11044,7 +11044,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 492.76 129.54 0)
 			(hide yes)
 			(effects
@@ -11071,7 +11071,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 492.76 129.54 0)
 			(hide yes)
 			(effects
@@ -11080,7 +11080,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 492.76 129.54 0)
 			(hide yes)
 			(effects
@@ -11143,7 +11143,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 543.56 129.54 0)
 			(hide yes)
 			(effects
@@ -11170,7 +11170,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 543.56 129.54 0)
 			(hide yes)
 			(effects
@@ -11179,7 +11179,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 543.56 129.54 0)
 			(hide yes)
 			(effects
@@ -11823,7 +11823,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 116.84 175.26 0)
 			(hide yes)
 			(effects
@@ -11850,7 +11850,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 116.84 175.26 0)
 			(hide yes)
 			(effects
@@ -11859,7 +11859,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 116.84 175.26 0)
 			(hide yes)
 			(effects
@@ -11922,7 +11922,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 167.64 175.26 0)
 			(hide yes)
 			(effects
@@ -11949,7 +11949,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 167.64 175.26 0)
 			(hide yes)
 			(effects
@@ -11958,7 +11958,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 167.64 175.26 0)
 			(hide yes)
 			(effects
@@ -12602,7 +12602,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 492.76 175.26 0)
 			(hide yes)
 			(effects
@@ -12629,7 +12629,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 492.76 175.26 0)
 			(hide yes)
 			(effects
@@ -12638,7 +12638,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 492.76 175.26 0)
 			(hide yes)
 			(effects
@@ -12701,7 +12701,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 543.56 175.26 0)
 			(hide yes)
 			(effects
@@ -12728,7 +12728,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 543.56 175.26 0)
 			(hide yes)
 			(effects
@@ -12737,7 +12737,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 543.56 175.26 0)
 			(hide yes)
 			(effects
@@ -13381,7 +13381,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 116.84 220.98 0)
 			(hide yes)
 			(effects
@@ -13408,7 +13408,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 116.84 220.98 0)
 			(hide yes)
 			(effects
@@ -13417,7 +13417,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 116.84 220.98 0)
 			(hide yes)
 			(effects
@@ -13480,7 +13480,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 167.64 220.98 0)
 			(hide yes)
 			(effects
@@ -13507,7 +13507,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 167.64 220.98 0)
 			(hide yes)
 			(effects
@@ -13516,7 +13516,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 167.64 220.98 0)
 			(hide yes)
 			(effects
@@ -14160,7 +14160,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 492.76 220.98 0)
 			(hide yes)
 			(effects
@@ -14187,7 +14187,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 492.76 220.98 0)
 			(hide yes)
 			(effects
@@ -14196,7 +14196,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 492.76 220.98 0)
 			(hide yes)
 			(effects
@@ -14259,7 +14259,7 @@
 				)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0402_1005Metric"
+		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
 			(at 543.56 220.98 0)
 			(hide yes)
 			(effects
@@ -14286,7 +14286,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C728435"
+		(property "LCSC" "C513694"
 			(at 543.56 220.98 0)
 			(hide yes)
 			(effects
@@ -14295,7 +14295,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0402FR-070R82L"
+		(property "MPN" "RL0805FR-070R82L"
 			(at 543.56 220.98 0)
 			(hide yes)
 			(effects

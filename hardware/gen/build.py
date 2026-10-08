@@ -15,6 +15,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.dirname(HERE)
 
 R0402 = "Resistor_SMD:R_0402_1005Metric"
+R0805 = "Resistor_SMD:R_0805_2012Metric"
 C0402 = "Capacitor_SMD:C_0402_1005Metric"
 C0805 = "Capacitor_SMD:C_0805_2012Metric"
 SOT23_5 = "Package_TO_SOT_SMD:SOT-23-5"
@@ -86,7 +87,7 @@ PASSIVES = {
     ("4.7u", C0402): ("C23733", "CL05A475MP5NRNC"),      # 10 V X5R
     ("15p", C0402): ("C1548", "0402CG150J500NT"),        # 50 V C0G
     ("10u", C0805): ("C15850", "CL21A106KAYNNNE"),       # 25 V X5R
-    ("0.82", R0402): ("C728435", "RL0402FR-070R82L"),    # Yageo 1 %, 62.5 mW, extended (no basic 0.82R)
+    ("0.82", R0805): ("C513694", "RL0805FR-070R82L"),    # Yageo 1 %, 125 mW, extended (no basic 0.82R)
     ("27", R0402): ("C25100", "0402WGF270JTCE"),         # extended
     ("33", R0402): ("C25105", "0402WGF330JTCE"),
     ("1k", R0402): ("C11702", "0402WGF1001TCE"),
@@ -282,8 +283,8 @@ def driver(s=None):
         s.add("Driver_Motor:DRV8833RTY", "U", "AT8833CQ", "Package_DFN_QFN:QFN-16-1EP_4x4mm_P0.65mm_EP2.1x2.1mm",
               nets, ref=u, LCSC="C5120769", MPN="AT8833CQ",
               Note="DRV8833RTY pinout; 2nd source JSMSEMI DRV8833RTYR-JSM C55566425")
-        R(s, "0.82", f"{u}_AISEN", "GND", Note="chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return")
-        R(s, "0.82", f"{u}_BISEN", "GND", Note="chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return")
+        R(s, "0.82", f"{u}_AISEN", "GND", fp=R0805, Note="chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return")
+        R(s, "0.82", f"{u}_BISEN", "GND", fp=R0805, Note="chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return")
         C(s, "1u", f"{u}_VINT", "GND")
         flags(s, f"{u}_VINT")  # internal regulator output, typed power_in in the symbol
         C(s, "100n", f"{u}_VCP", "V5")
