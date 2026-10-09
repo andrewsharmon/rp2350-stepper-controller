@@ -180,6 +180,11 @@ A held button hides an open e-stop (e-stop open + Btn1 = 1.65 V, + Btn2 = 0.82 V
 
 Controller, driver and the `io_sh` connectors on one PCB, from the `single_sh/` schematic (`single()` in `gen/build.py`). Fully routed: 0 unconnected, no DRC errors, schematic parity clean.
 
+- Schematic: a wired, hierarchical drawing (`gen/single_sh_sch.py`), unlike the label-only stack schematics.
+  - Sheets: overview, power and USB, MCU, motor drivers, connectors and UI. Each block is framed, with design notes on its sheet.
+  - Inter-sheet signals (motor lines, LADDER, BOARD_ID, I2C, CC, USB) are global labels. Power rails are power symbols, so their PCB nets are `GND`, `+3V3`, `V5` and so on; nets local to a sheet are named `/<sheet>/<label>`, e.g. `/Power/V5_IN`.
+  - The AT8833 uses a project symbol (`lib/stack.kicad_sym`, written by `build.py`) with the DRV8833RTY pin numbers, laid out for the drawing; VINT is typed as an output, so it needs no PWR_FLAG.
+
 - **122 x 20 mm**, 4 layers, 1.6 mm thick. All parts on top; only the THT legs of the USB-C and the JST-PH/XH connectors come through.
 - Layers: F.Cu parts and signals, In1 solid GND, In2 V5, B.Cu signals. In2 has a 3V3 island under the MCU, joined to the LDO by a thin finger along the -y edge.
 - Along the board: USB-C (mouth on the short edge) and power path | drivers M4 M3 M2 M1 | MCU | drivers M10 M9 M8 M7 M6 M5 | LED strip connector.
@@ -224,7 +229,7 @@ Controller, driver and the `io_sh` connectors on one PCB, from the `single_sh/` 
 
 ## Schematics and BOM
 
-Schematics are generated. Edit `gen/build.py`, not the `.kicad_sch` files.
+Schematics are generated. Edit `gen/build.py`, not the `.kicad_sch` files. For `single_sh`, part placement and wiring live in `gen/single_sh_sch.py`.
 
 ```bash
 python3 gen/footprints.py   # project footprints -> lib/stack.pretty
@@ -244,7 +249,10 @@ Outputs:
 
 - `controller/`, `driver/`, `io_xh/` (28BYJ-48), `io_sh/` (micro steppers): one KiCad schematic each.
 - `single_xh/`, `single_sh/`: the whole circuit (controller + driver + that IO variant) on one board, with the BTB connectors removed and their nets joined directly. `single_sh` has a routed PCB (see above); `single_xh` is schematic only.
-- Each part's pins are connected by net labels.
+- Each part's pins are connected by net labels, except in `single_sh`, which is drawn with wires (`gen/single_sh_sch.py`, using `gen/schdraw.py`).
+  - Before writing, `schdraw` traces the drawing the way KiCad does (wires, junctions, labels, power symbols) and fails unless every pin is on exactly the net `build.py` gave it.
+  - Moving or adding a part in `build.py` means placing it in `single_sh_sch.py` too; an unplaced part, unwired pin or short stops the build.
+  - Refs and symbol UUIDs are what the routed PCB links to. Changing a net's name or sheet changes its PCB net name: run Update PCB from Schematic in KiCad afterwards.
 - `*_bom.csv` in each folder, exported with `kicad-cli sch export bom` (grouped by value, footprint, LCSC, MPN and note).
 
 Part data:

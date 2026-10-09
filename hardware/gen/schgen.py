@@ -14,6 +14,8 @@ from sexp import Sym, dump, find, first
 GRID = 2.54
 LABEL_ANGLE = {0: 180, 180: 0, 90: 270, 270: 90}
 NS = uuid.UUID("8f2c0d8e-5b7a-4f1e-9d4b-3a6c2e1f0a11")
+FP_LIB_TABLE = ('(fp_lib_table\n  (version 7)\n  (lib (name "stack")(type "KiCad")'
+                '(uri "${KIPRJMOD}/../lib/stack.pretty")(options "")(descr "Project footprints"))\n)\n')
 
 
 def snap(v):
@@ -137,8 +139,7 @@ class Schematic:
         with open(os.path.join(out_dir, self.name + ".kicad_sch"), "w") as f:
             f.write(text)
         with open(os.path.join(out_dir, "fp-lib-table"), "w") as f:
-            f.write('(fp_lib_table\n  (version 7)\n  (lib (name "stack")(type "KiCad")'
-                    '(uri "${KIPRJMOD}/../lib/stack.pretty")(options "")(descr "Project footprints"))\n)\n')
+            f.write(FP_LIB_TABLE)
         pro = os.path.join(out_dir, self.name + ".kicad_pro")
         if not os.path.exists(pro):
             with open(pro, "w") as f:

@@ -332,55 +332,55 @@
     "netclass_patterns": [
       {
         "netclass": "Power",
-        "pattern": "/VBUS"
+        "pattern": "VBUS"
       },
       {
         "netclass": "Power",
-        "pattern": "/VBUS_F"
+        "pattern": "/Power/VBUS_F"
       },
       {
         "netclass": "Power",
-        "pattern": "/V5_IN"
+        "pattern": "/Power/V5_IN"
       },
       {
         "netclass": "Power",
-        "pattern": "/+5V_EXT"
+        "pattern": "/Power/+5V_EXT"
       },
       {
         "netclass": "Power",
-        "pattern": "/STRIP_V5_FUSED"
+        "pattern": "/Connectors and UI/STRIP_V5_FUSED"
       },
       {
         "netclass": "Power",
-        "pattern": "/STRIP_5V"
+        "pattern": "/Connectors and UI/STRIP_5V"
       },
       {
         "netclass": "Power",
-        "pattern": "/V5"
+        "pattern": "V5"
       },
       {
         "netclass": "Supply",
-        "pattern": "/+1V1"
+        "pattern": "+1V1"
       },
       {
         "netclass": "Supply",
-        "pattern": "/VREG_LX"
+        "pattern": "/MCU/VREG_LX"
       },
       {
         "netclass": "Supply",
-        "pattern": "/VREG_AVDD"
+        "pattern": "/MCU/VREG_AVDD"
       },
       {
         "netclass": "Supply",
-        "pattern": "/QWIIC_3V3"
+        "pattern": "QWIIC_3V3"
       },
       {
         "netclass": "Supply",
-        "pattern": "/+3V3"
+        "pattern": "+3V3"
       },
       {
         "netclass": "Supply",
-        "pattern": "/GND"
+        "pattern": "GND"
       }
     ]
   },

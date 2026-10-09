@@ -567,8 +567,8 @@ def single_sh(board, fps):
           (i0 - g, 1.9 + g), (i0 - g, i3 + g), (i1 + g, i3 + g), (i1 + g, e), (SH_L - e, e),
           (SH_L - e, SH_W - e), (e, SH_W - e)]
     nets = {p.GetNetname(): p.GetNet() for fp in fps.values() for p in fp.Pads()}
-    zone(board, nets["/+3V3"], pcbnew.In2_Cu, 0, 0, pts=[sh_xy(*q) for q in v3], priority=1)
-    zone(board, nets["/V5"], pcbnew.In2_Cu, 0, 0, pts=[sh_xy(*q) for q in v5])
+    zone(board, nets["+3V3"], pcbnew.In2_Cu, 0, 0, pts=[sh_xy(*q) for q in v3], priority=1)
+    zone(board, nets["V5"], pcbnew.In2_Cu, 0, 0, pts=[sh_xy(*q) for q in v5])
     return placed
 
 
@@ -578,7 +578,7 @@ LAYERS = {"controller": 4, "driver": 4, "single_sh": 4}
 SIZES = {"controller": (30.0, 30.0, 1.0), "driver": (30.0, 30.0, 1.0), "single_sh": (SH_L, SH_W, 1.6)}
 ZONES = {"controller": [("/GND", pcbnew.In1_Cu), ("/+3V3", pcbnew.In2_Cu)],
          "driver": [("/GND", pcbnew.In1_Cu), ("/V5", pcbnew.In2_Cu)],
-         "single_sh": [("/GND", pcbnew.In1_Cu)]}                     # In2 zones: see single_sh()
+         "single_sh": [("GND", pcbnew.In1_Cu)]}      # global power nets; In2 zones: see single_sh()
 
 
 def build(name, out_dir):

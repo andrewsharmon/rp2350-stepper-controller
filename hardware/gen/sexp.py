@@ -39,7 +39,7 @@ def _atom(a):
     if isinstance(a, (int, float)):
         s = f"{a:.4f}".rstrip("0").rstrip(".")
         return "0" if s in ("-0", "") else s
-    return '"' + str(a).replace("\\", "\\\\").replace('"', '\\"') + '"'
+    return '"' + str(a).replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n") + '"'
 
 
 def dump(node, indent=0):

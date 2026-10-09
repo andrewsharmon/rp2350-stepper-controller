@@ -3,12 +3,16 @@
     python3 build.py        # writes ../controller, ../driver, ../io_xh, ../io_sh,
                             # and the one-board versions ../single_xh, ../single_sh
 
+single_sh is drawn as a wired, multi-sheet schematic by single_sh_sch.py; the
+rest are one sheet of parts with a net label on every pin.
+
 Passives get their LCSC / MPN from PASSIVES below; the LCSC field is only set
 on parts whose number was checked (JLCPCB parts library, 2026-10-07).
 """
 
 import os
 
+import single_sh_sch
 from schgen import Schematic
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -413,7 +417,9 @@ def main():
                sh_motor_pair, "4.7k"),
     ]
     for b in boards:
-        singles = b.write(os.path.join(OUT, b.name))
+        out = os.path.join(OUT, b.name)
+        # single_sh has a hand-arranged, wired drawing; the others are label-only.
+        singles = single_sh_sch.write(b, out) if b.name == "single_sh" else b.write(out)
         print(f"{b.name}: {len(b.parts)} parts; single-pin nets: {', '.join(singles) or 'none'}")
 
 
