@@ -375,7 +375,7 @@ def driver(board, fps):
 # power) run along the -y edge above them.
 #
 # Driver cell (AT8833 rotated 90: outputs face the motor connector, inputs on
-# the -y half): VINT / VM / VCP caps in a row above, 0805 sense resistors below
+# the -y half): VINT / VM / VCP caps in a row above, 0603 sense resistors below
 # (neighbouring cells' GND pads sit 0.2 mm apart; their courtyards touch).
 # Connector pins run B2 B1 A2 A1 (left to right) against the driver's A1 A2 B2
 # B1, so B1/B2 stay on F.Cu and A1/A2 hop over them on In2. A pair's two
@@ -454,10 +454,10 @@ def single_sh(board, fps):
     def cell(m, u):
         vd = SH_VD
         put(f"U{m}", u, vd, 90)
-        # 0805 sense resistors (125 mW): ISEN pads at u -/+ 0.8, GND pads outboard.
+        # 0603 sense resistors (250 mW): ISEN pads at u -/+ 0.8, GND pads outboard.
         # BOUT2 runs down between the ISEN pads, BOUT1 under R_B's body.
-        put(f"R{2 * m - 1}", u - 1.7125, vd + 3.6, 180)    # AISEN: pin 1 at u - 0.8
-        put(f"R{2 * m}", u + 1.7125, vd + 3.6, 0)          # BISEN: pin 1 at u + 0.8
+        put(f"R{2 * m - 1}", u - 1.575, vd + 3.6, 180)    # AISEN: pin 1 at u - 0.8
+        put(f"R{2 * m}", u + 1.575, vd + 3.6, 0)          # BISEN: pin 1 at u + 0.8
         put(f"C{3 * m - 2}", u - 1.95, vd - 3.22, 180)     # VINT: pin 1 at u - 1.47
         put(f"C{3 * m}", u, vd - 3.22, 180)                # VM: V5 at u + 0.48, GND at u - 0.48
         put(f"C{3 * m - 1}", u + 1.95, vd - 3.22, 0)       # VCP: pin 1 at u + 1.47

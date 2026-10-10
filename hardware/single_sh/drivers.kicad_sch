@@ -1472,7 +1472,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 43.18 90.17 0)
 			(hide yes)
 			(effects
@@ -1499,7 +1499,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 43.18 90.17 0)
 			(hide yes)
 			(effects
@@ -1508,7 +1508,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 43.18 90.17 0)
 			(hide yes)
 			(effects
@@ -1559,7 +1559,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 58.42 90.17 0)
 			(hide yes)
 			(effects
@@ -1586,7 +1586,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 58.42 90.17 0)
 			(hide yes)
 			(effects
@@ -1595,7 +1595,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 58.42 90.17 0)
 			(hide yes)
 			(effects
@@ -2008,7 +2008,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 119.38 90.17 0)
 			(hide yes)
 			(effects
@@ -2035,7 +2035,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 119.38 90.17 0)
 			(hide yes)
 			(effects
@@ -2044,7 +2044,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 119.38 90.17 0)
 			(hide yes)
 			(effects
@@ -2095,7 +2095,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 134.62 90.17 0)
 			(hide yes)
 			(effects
@@ -2122,7 +2122,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 134.62 90.17 0)
 			(hide yes)
 			(effects
@@ -2131,7 +2131,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 134.62 90.17 0)
 			(hide yes)
 			(effects
@@ -2544,7 +2544,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 195.58 90.17 0)
 			(hide yes)
 			(effects
@@ -2571,7 +2571,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 195.58 90.17 0)
 			(hide yes)
 			(effects
@@ -2580,7 +2580,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 195.58 90.17 0)
 			(hide yes)
 			(effects
@@ -2631,7 +2631,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 210.82 90.17 0)
 			(hide yes)
 			(effects
@@ -2658,7 +2658,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 210.82 90.17 0)
 			(hide yes)
 			(effects
@@ -2667,7 +2667,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 210.82 90.17 0)
 			(hide yes)
 			(effects
@@ -3080,7 +3080,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 271.78 90.17 0)
 			(hide yes)
 			(effects
@@ -3107,7 +3107,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 271.78 90.17 0)
 			(hide yes)
 			(effects
@@ -3116,7 +3116,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 271.78 90.17 0)
 			(hide yes)
 			(effects
@@ -3167,7 +3167,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 287.02 90.17 0)
 			(hide yes)
 			(effects
@@ -3194,7 +3194,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 287.02 90.17 0)
 			(hide yes)
 			(effects
@@ -3203,7 +3203,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 287.02 90.17 0)
 			(hide yes)
 			(effects
@@ -3616,7 +3616,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 347.98 90.17 0)
 			(hide yes)
 			(effects
@@ -3643,7 +3643,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 347.98 90.17 0)
 			(hide yes)
 			(effects
@@ -3652,7 +3652,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 347.98 90.17 0)
 			(hide yes)
 			(effects
@@ -3703,7 +3703,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 363.22 90.17 0)
 			(hide yes)
 			(effects
@@ -3730,7 +3730,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 363.22 90.17 0)
 			(hide yes)
 			(effects
@@ -3739,7 +3739,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 363.22 90.17 0)
 			(hide yes)
 			(effects
@@ -4152,7 +4152,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 43.18 176.53 0)
 			(hide yes)
 			(effects
@@ -4179,7 +4179,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 43.18 176.53 0)
 			(hide yes)
 			(effects
@@ -4188,7 +4188,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 43.18 176.53 0)
 			(hide yes)
 			(effects
@@ -4239,7 +4239,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 58.42 176.53 0)
 			(hide yes)
 			(effects
@@ -4266,7 +4266,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 58.42 176.53 0)
 			(hide yes)
 			(effects
@@ -4275,7 +4275,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 58.42 176.53 0)
 			(hide yes)
 			(effects
@@ -4688,7 +4688,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 119.38 176.53 0)
 			(hide yes)
 			(effects
@@ -4715,7 +4715,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 119.38 176.53 0)
 			(hide yes)
 			(effects
@@ -4724,7 +4724,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 119.38 176.53 0)
 			(hide yes)
 			(effects
@@ -4775,7 +4775,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 134.62 176.53 0)
 			(hide yes)
 			(effects
@@ -4802,7 +4802,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 134.62 176.53 0)
 			(hide yes)
 			(effects
@@ -4811,7 +4811,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 134.62 176.53 0)
 			(hide yes)
 			(effects
@@ -5224,7 +5224,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 195.58 176.53 0)
 			(hide yes)
 			(effects
@@ -5251,7 +5251,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 195.58 176.53 0)
 			(hide yes)
 			(effects
@@ -5260,7 +5260,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 195.58 176.53 0)
 			(hide yes)
 			(effects
@@ -5311,7 +5311,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 210.82 176.53 0)
 			(hide yes)
 			(effects
@@ -5338,7 +5338,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 210.82 176.53 0)
 			(hide yes)
 			(effects
@@ -5347,7 +5347,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 210.82 176.53 0)
 			(hide yes)
 			(effects
@@ -5760,7 +5760,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 271.78 176.53 0)
 			(hide yes)
 			(effects
@@ -5787,7 +5787,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 271.78 176.53 0)
 			(hide yes)
 			(effects
@@ -5796,7 +5796,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 271.78 176.53 0)
 			(hide yes)
 			(effects
@@ -5847,7 +5847,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 287.02 176.53 0)
 			(hide yes)
 			(effects
@@ -5874,7 +5874,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 287.02 176.53 0)
 			(hide yes)
 			(effects
@@ -5883,7 +5883,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 287.02 176.53 0)
 			(hide yes)
 			(effects
@@ -6296,7 +6296,7 @@
 				(justify right)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 347.98 176.53 0)
 			(hide yes)
 			(effects
@@ -6323,7 +6323,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 347.98 176.53 0)
 			(hide yes)
 			(effects
@@ -6332,7 +6332,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 347.98 176.53 0)
 			(hide yes)
 			(effects
@@ -6383,7 +6383,7 @@
 				(justify left)
 			)
 		)
-		(property "Footprint" "Resistor_SMD:R_0805_2012Metric"
+		(property "Footprint" "Resistor_SMD:R_0603_1608Metric"
 			(at 363.22 176.53 0)
 			(hide yes)
 			(effects
@@ -6410,7 +6410,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C513694"
+		(property "LCSC" "C186570"
 			(at 363.22 176.53 0)
 			(hide yes)
 			(effects
@@ -6419,7 +6419,7 @@
 				)
 			)
 		)
-		(property "MPN" "RL0805FR-070R82L"
+		(property "MPN" "SR731JTTDR820F"
 			(at 363.22 176.53 0)
 			(hide yes)
 			(effects
@@ -14580,7 +14580,7 @@
 		)
 		(uuid "57f9fd44-e0fc-5744-8905-6b71a20438bc")
 	)
-	(text "AT8833CQ (Zhongkewei, LCSC C5120769): DRV8833-compatible logic, 00 coast, 01 reverse, 10 forward, 11 brake.\nVM is the V5 bus directly. Inputs have internal 100k pull-downs; nSLEEP is pulled high (always awake).\nxISEN: 0.82 ohm 0805 to ground; the chip chops at VTRIP / R = 0.2-0.29 A (VTRIP 160-240 mV), slow decay.\nGive each sense resistor its own return to the star ground.\nVCP 0.1 uF to VM and VINT 1 uF are the AT8833 datasheet values (TI's DRV8833 uses 0.01 uF and 2.2 uF).\nnFAULT (open drain) of every driver is wire-ORed onto LADDER: a fault pulls it to 0 V (STOP).\nSecond source: JSMSEMI DRV8833RTYR (same QFN-16 4x4); check its pinout against TI's first."
+	(text "AT8833CQ (Zhongkewei, LCSC C5120769): DRV8833-compatible logic, 00 coast, 01 reverse, 10 forward, 11 brake.\nVM is the V5 bus directly. Inputs have internal 100k pull-downs; nSLEEP is pulled high (always awake).\nxISEN: 0.82 ohm 0603 to ground; the chip chops at VTRIP / R = 0.2-0.29 A (VTRIP 160-240 mV), slow decay.\nGive each sense resistor its own return to the star ground.\nVCP 0.1 uF to VM and VINT 1 uF are the AT8833 datasheet values (TI's DRV8833 uses 0.01 uF and 2.2 uF).\nnFAULT (open drain) of every driver is wire-ORed onto LADDER: a fault pulls it to 0 V (STOP).\nSecond source: JSMSEMI DRV8833RTYR (same QFN-16 4x4); check its pinout against TI's first."
 		(exclude_from_sim no)
 		(at 95.25 203.2 0)
 		(effects

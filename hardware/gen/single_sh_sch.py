@@ -422,7 +422,7 @@ def draw_drivers(sh):
     notes(sh, 92.71, 195.58, 241.3,
             "AT8833CQ (Zhongkewei, LCSC C5120769): DRV8833-compatible logic, 00 coast, 01 reverse, 10 forward, 11 brake.\n"
             "VM is the V5 bus directly. Inputs have internal 100k pull-downs; nSLEEP is pulled high (always awake).\n"
-            "xISEN: 0.82 ohm 0805 to ground; the chip chops at VTRIP / R = 0.2-0.29 A (VTRIP 160-240 mV), slow decay.\n"
+            "xISEN: 0.82 ohm 0603 to ground; the chip chops at VTRIP / R = 0.2-0.29 A (VTRIP 160-240 mV), slow decay.\n"
             "Give each sense resistor its own return to the star ground.\n"
             "VCP 0.1 uF to VM and VINT 1 uF are the AT8833 datasheet values (TI's DRV8833 uses 0.01 uF and 2.2 uF).\n"
             "nFAULT (open drain) of every driver is wire-ORed onto LADDER: a fault pulls it to 0 V (STOP).\n"

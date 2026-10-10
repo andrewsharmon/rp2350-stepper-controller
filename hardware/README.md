@@ -190,8 +190,8 @@ Controller, driver and the `io_sh` connectors on one PCB, from the `single_sh/` 
 - Along the board: USB-C (mouth on the short edge) and power path | drivers M4 M3 M2 M1 | MCU | drivers M10 M9 M8 M7 M6 M5 | LED strip connector.
   - Motor connectors run along one long edge in the order J12 J11 | J15 J14 J13, so each motor bus leaves the MCU in pin order and never crosses itself.
   - Qwiic x2, BOOTSEL, e-stop, panel buttons, 5 V in, status LED and LED power run along the other long edge, above the drivers.
-- Driver cell: AT8833 rotated so its outputs face the connector. VINT/VM/VCP caps sit above it; the 0805 sense resistors sit below, ISEN pads inboard, each GND pad with its own via (R16 and R20 instead tie to the neighbouring cell's GND pad).
-  - BOUT2 runs down between the two ISEN pads and BOUT1 under R_B's body. Neighbouring cells' resistor courtyards touch (9 courtyard warnings, plus R19 against TP3); the pads are 0.2 mm apart, both GND.
+- Driver cell: AT8833 rotated so its outputs face the connector. VINT/VM/VCP caps sit above it; the 0603 sense resistors sit below, ISEN pads inboard, each GND pad with its own via (R16 and R20 instead tie to the neighbouring cell's GND pad).
+  - BOUT2 runs down between the two ISEN pads and BOUT1 under R_B's body. The resistors went 0805 -> 0603 in place on the routed board: pad 1 (ISEN) kept, GND pad 0.275 mm inboard (R5 and R11 keep the GND pad instead, clear of a neighbouring via and track).
   - The connector's pin order (B2 B1 A2 A1, left to right) runs against the driver's (A1 A2 B2 B1), so A1/A2 hop over B1/B2 on short In2 jumpers (4 vias per motor).
   - Swapping this board's connector pin assignment (pins 1-2 = coil B, pins 3-4 = coil A reversed) would remove the jumpers, if firmware maps coil order and polarity per board. Not done, because the cable pinout would then differ from `io_sh`.
 - V5 enters the In2 plane through via clusters at the soft-start FET, the external 5 V diode and the LED-strip fuse.
@@ -201,7 +201,7 @@ Controller, driver and the `io_sh` connectors on one PCB, from the `single_sh/` 
 - Silkscreen: reference designators are hidden (too dense).
   - Motor numbers sit above each connector; function labels are on top where they fit, otherwise on the underside.
   - The underside also carries the NO_ESTOP cut warning.
-  - The 14 remaining silkscreen warnings: each AT8833 pin-1 mark is clipped by its AISEN pad (10), plus outlines touching each other or the board edge (4).
+  - The 4 remaining silkscreen warnings are outlines touching each other or the board edge.
 
 ### Fabrication (JLCPCB)
 
@@ -260,7 +260,7 @@ Part data:
 - Every BOM line has an LCSC number, checked against the JLCPCB parts library on 2026-10-07 (part, package, rating, stock). Passives take theirs from `PASSIVES` in `gen/build.py`.
 - JLCPCB basic parts where one exists. Extended lines: RP2354B, AT8833CQ, 3.3 uH inductor, crystal, ESD diode, LDO, AHCT buffer, status LED, polyfuse, USB-C, the JST connectors, and three passives:
   - 2.2 uF VM caps: the only basic 0402 2.2 uF is rated 6.3 V, so a 16 V part is used on the 5 V motor rail.
-  - 0.82 ohm sense resistors (0805, 125 mW): no basic part exists.
+  - 0.82 ohm sense resistors (0603, 250 mW): no basic part exists.
   - 27 ohm USB series resistors and the 39 k VMOT_SENSE divider resistor: no basic 0402 part exists.
 - Solder jumpers and test pads are excluded from the BOM and from the placement file (they are copper only).
 
@@ -272,6 +272,6 @@ Open items:
   - RP2354B: about 1.7k in stock.
   - Polyfuse: 1.97k in stock. Ruilon C702823 isn't in JLCPCB's library, so PTTC SMD1812P150TF/8 (C209721) is used.
   - Status LED: the Worldsemi WS2812B-2020 (C965555) had 1 in stock, so the XINGLIGHT XL-2020RGBC-WS2812B (C5349955) is used. It has the same pinout and footprint.
-- Sense resistors: 0805, 125 mW (Yageo RL0805FR-070R82L, C513694). Holding a coil at the AT8833 current-limit trip (up to 0.29 A at VTRIP 240 mV) dissipates 69 mW, 56 % of rating. The worst case is VTRIP^2 / R, so a lower R for more current needs R >= 0.58 ohm to keep 20 % margin in 0805.
+- Sense resistors: 0603, 250 mW (Viking SR731JTTDR820F, C186570; 2.2k in stock 2026-10-10). Holding a coil at the AT8833 current-limit trip (up to 0.29 A at VTRIP 240 mV) dissipates 69 mW, 28 % of rating. The worst case is VTRIP^2 / R, so a lower R for more current needs R >= 0.29 ohm to keep 20 % margin. Most 0603 0.82 ohm parts are 100 mW (69 %); keep a 250 mW part if this one is substituted.
 - LED PWR (J6) is a JST-PH rated 2 A per pin, which caps a separately powered strip at 2 A unless the connector changes.
 - PCB layout: controller fully routed (0 unconnected; silkscreen labels still to tidy); `single_sh` fully routed (unreviewed); driver and tier-3 boards not started. Routing used Freerouting 2.5.0 plus a small grid router for the last nets; neither is part of the repo.

@@ -7,7 +7,7 @@
 "J2","BTB 40P socket","stack:Hirose_DF40C-2.0-40DS_Socket","1","DF40C(2.0)-40DS-0.4V(51)","C597934","from controller B, top side"
 "J3","BTB 40P header","stack:Hirose_DF40C-40DP_Header","1","DF40C-40DP-0.4V(51)","C424643","to tier 3 A, board underside"
 "J4","BTB 40P header","stack:Hirose_DF40C-40DP_Header","1","DF40C-40DP-0.4V(51)","C424643","to tier 3 B, board underside"
-"R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,R13,R14,R15,R16,R17,R18,R19,R20","0.82","Resistor_SMD:R_0805_2012Metric","20","RL0805FR-070R82L","C513694","chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+"R1,R2,R3,R4,R5,R6,R7,R8,R9,R10,R11,R12,R13,R14,R15,R16,R17,R18,R19,R20","0.82","Resistor_SMD:R_0603_1608Metric","20","SR731JTTDR820F","C186570","chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
 "R21","47k","Resistor_SMD:R_0402_1005Metric","1","0402WGF4702TCE","C25792",""
 "R22","39k 1%","Resistor_SMD:R_0402_1005Metric","1","0402WGF3902TCE","C25783",""
 "R23","10k 1%","Resistor_SMD:R_0402_1005Metric","1","0402WGF1002TCE","C25744",""
