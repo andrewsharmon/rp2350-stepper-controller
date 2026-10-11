@@ -1463,7 +1463,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 40.64 91.44 0)
 			(effects
 				(font
@@ -1490,7 +1490,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 43.18 90.17 0)
 			(hide yes)
 			(effects
@@ -1499,7 +1499,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 43.18 90.17 0)
 			(hide yes)
 			(effects
@@ -1508,7 +1508,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 43.18 90.17 0)
 			(hide yes)
 			(effects
@@ -1550,7 +1550,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 60.96 91.44 0)
 			(effects
 				(font
@@ -1577,7 +1577,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 58.42 90.17 0)
 			(hide yes)
 			(effects
@@ -1586,7 +1586,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 58.42 90.17 0)
 			(hide yes)
 			(effects
@@ -1595,7 +1595,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 58.42 90.17 0)
 			(hide yes)
 			(effects
@@ -1999,7 +1999,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 116.84 91.44 0)
 			(effects
 				(font
@@ -2026,7 +2026,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 119.38 90.17 0)
 			(hide yes)
 			(effects
@@ -2035,7 +2035,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 119.38 90.17 0)
 			(hide yes)
 			(effects
@@ -2044,7 +2044,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 119.38 90.17 0)
 			(hide yes)
 			(effects
@@ -2086,7 +2086,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 137.16 91.44 0)
 			(effects
 				(font
@@ -2113,7 +2113,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 134.62 90.17 0)
 			(hide yes)
 			(effects
@@ -2122,7 +2122,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 134.62 90.17 0)
 			(hide yes)
 			(effects
@@ -2131,7 +2131,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 134.62 90.17 0)
 			(hide yes)
 			(effects
@@ -2535,7 +2535,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 193.04 91.44 0)
 			(effects
 				(font
@@ -2562,7 +2562,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 195.58 90.17 0)
 			(hide yes)
 			(effects
@@ -2571,7 +2571,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 195.58 90.17 0)
 			(hide yes)
 			(effects
@@ -2580,7 +2580,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 195.58 90.17 0)
 			(hide yes)
 			(effects
@@ -2622,7 +2622,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 213.36 91.44 0)
 			(effects
 				(font
@@ -2649,7 +2649,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 210.82 90.17 0)
 			(hide yes)
 			(effects
@@ -2658,7 +2658,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 210.82 90.17 0)
 			(hide yes)
 			(effects
@@ -2667,7 +2667,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 210.82 90.17 0)
 			(hide yes)
 			(effects
@@ -3071,7 +3071,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 269.24 91.44 0)
 			(effects
 				(font
@@ -3098,7 +3098,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 271.78 90.17 0)
 			(hide yes)
 			(effects
@@ -3107,7 +3107,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 271.78 90.17 0)
 			(hide yes)
 			(effects
@@ -3116,7 +3116,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 271.78 90.17 0)
 			(hide yes)
 			(effects
@@ -3158,7 +3158,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 289.56 91.44 0)
 			(effects
 				(font
@@ -3185,7 +3185,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 287.02 90.17 0)
 			(hide yes)
 			(effects
@@ -3194,7 +3194,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 287.02 90.17 0)
 			(hide yes)
 			(effects
@@ -3203,7 +3203,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 287.02 90.17 0)
 			(hide yes)
 			(effects
@@ -3607,7 +3607,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 345.44 91.44 0)
 			(effects
 				(font
@@ -3634,7 +3634,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 347.98 90.17 0)
 			(hide yes)
 			(effects
@@ -3643,7 +3643,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 347.98 90.17 0)
 			(hide yes)
 			(effects
@@ -3652,7 +3652,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 347.98 90.17 0)
 			(hide yes)
 			(effects
@@ -3694,7 +3694,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 365.76 91.44 0)
 			(effects
 				(font
@@ -3721,7 +3721,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 363.22 90.17 0)
 			(hide yes)
 			(effects
@@ -3730,7 +3730,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 363.22 90.17 0)
 			(hide yes)
 			(effects
@@ -3739,7 +3739,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 363.22 90.17 0)
 			(hide yes)
 			(effects
@@ -4143,7 +4143,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 40.64 177.8 0)
 			(effects
 				(font
@@ -4170,7 +4170,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 43.18 176.53 0)
 			(hide yes)
 			(effects
@@ -4179,7 +4179,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 43.18 176.53 0)
 			(hide yes)
 			(effects
@@ -4188,7 +4188,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 43.18 176.53 0)
 			(hide yes)
 			(effects
@@ -4230,7 +4230,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 60.96 177.8 0)
 			(effects
 				(font
@@ -4257,7 +4257,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 58.42 176.53 0)
 			(hide yes)
 			(effects
@@ -4266,7 +4266,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 58.42 176.53 0)
 			(hide yes)
 			(effects
@@ -4275,7 +4275,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 58.42 176.53 0)
 			(hide yes)
 			(effects
@@ -4679,7 +4679,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 116.84 177.8 0)
 			(effects
 				(font
@@ -4706,7 +4706,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 119.38 176.53 0)
 			(hide yes)
 			(effects
@@ -4715,7 +4715,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 119.38 176.53 0)
 			(hide yes)
 			(effects
@@ -4724,7 +4724,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 119.38 176.53 0)
 			(hide yes)
 			(effects
@@ -4766,7 +4766,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 137.16 177.8 0)
 			(effects
 				(font
@@ -4793,7 +4793,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 134.62 176.53 0)
 			(hide yes)
 			(effects
@@ -4802,7 +4802,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 134.62 176.53 0)
 			(hide yes)
 			(effects
@@ -4811,7 +4811,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 134.62 176.53 0)
 			(hide yes)
 			(effects
@@ -5215,7 +5215,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 193.04 177.8 0)
 			(effects
 				(font
@@ -5242,7 +5242,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 195.58 176.53 0)
 			(hide yes)
 			(effects
@@ -5251,7 +5251,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 195.58 176.53 0)
 			(hide yes)
 			(effects
@@ -5260,7 +5260,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 195.58 176.53 0)
 			(hide yes)
 			(effects
@@ -5302,7 +5302,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 213.36 177.8 0)
 			(effects
 				(font
@@ -5329,7 +5329,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 210.82 176.53 0)
 			(hide yes)
 			(effects
@@ -5338,7 +5338,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 210.82 176.53 0)
 			(hide yes)
 			(effects
@@ -5347,7 +5347,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 210.82 176.53 0)
 			(hide yes)
 			(effects
@@ -5751,7 +5751,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 269.24 177.8 0)
 			(effects
 				(font
@@ -5778,7 +5778,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 271.78 176.53 0)
 			(hide yes)
 			(effects
@@ -5787,7 +5787,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 271.78 176.53 0)
 			(hide yes)
 			(effects
@@ -5796,7 +5796,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 271.78 176.53 0)
 			(hide yes)
 			(effects
@@ -5838,7 +5838,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 289.56 177.8 0)
 			(effects
 				(font
@@ -5865,7 +5865,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 287.02 176.53 0)
 			(hide yes)
 			(effects
@@ -5874,7 +5874,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 287.02 176.53 0)
 			(hide yes)
 			(effects
@@ -5883,7 +5883,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 287.02 176.53 0)
 			(hide yes)
 			(effects
@@ -6287,7 +6287,7 @@
 				(justify right)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 345.44 177.8 0)
 			(effects
 				(font
@@ -6314,7 +6314,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 347.98 176.53 0)
 			(hide yes)
 			(effects
@@ -6323,7 +6323,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 347.98 176.53 0)
 			(hide yes)
 			(effects
@@ -6332,7 +6332,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 347.98 176.53 0)
 			(hide yes)
 			(effects
@@ -6374,7 +6374,7 @@
 				(justify left)
 			)
 		)
-		(property "Value" "0.82"
+		(property "Value" "1"
 			(at 365.76 177.8 0)
 			(effects
 				(font
@@ -6401,7 +6401,7 @@
 				)
 			)
 		)
-		(property "Note" "chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return"
+		(property "Note" "chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return"
 			(at 363.22 176.53 0)
 			(hide yes)
 			(effects
@@ -6410,7 +6410,7 @@
 				)
 			)
 		)
-		(property "LCSC" "C186570"
+		(property "LCSC" "C22936"
 			(at 363.22 176.53 0)
 			(hide yes)
 			(effects
@@ -6419,7 +6419,7 @@
 				)
 			)
 		)
-		(property "MPN" "SR731JTTDR820F"
+		(property "MPN" "0603WAF100KT5E"
 			(at 363.22 176.53 0)
 			(hide yes)
 			(effects
@@ -14580,7 +14580,7 @@
 		)
 		(uuid "57f9fd44-e0fc-5744-8905-6b71a20438bc")
 	)
-	(text "AT8833CQ (Zhongkewei, LCSC C5120769): DRV8833-compatible logic, 00 coast, 01 reverse, 10 forward, 11 brake.\nVM is the V5 bus directly. Inputs have internal 100k pull-downs; nSLEEP is pulled high (always awake).\nxISEN: 0.82 ohm 0603 to ground; the chip chops at VTRIP / R = 0.2-0.29 A (VTRIP 160-240 mV), slow decay.\nGive each sense resistor its own return to the star ground.\nVCP 0.1 uF to VM and VINT 1 uF are the AT8833 datasheet values (TI's DRV8833 uses 0.01 uF and 2.2 uF).\nnFAULT (open drain) of every driver is wire-ORed onto LADDER: a fault pulls it to 0 V (STOP).\nSecond source: JSMSEMI DRV8833RTYR (same QFN-16 4x4); check its pinout against TI's first."
+	(text "AT8833CQ (Zhongkewei, LCSC C5120769): DRV8833-compatible logic, 00 coast, 01 reverse, 10 forward, 11 brake.\nVM is the V5 bus directly. Inputs have internal 100k pull-downs; nSLEEP is pulled high (always awake).\nxISEN: 1 ohm 0603 to ground; the chip chops at VTRIP / R = 0.16-0.24 A (VTRIP 160-240 mV), slow decay.\nGive each sense resistor its own return to the star ground.\nVCP 0.1 uF to VM and VINT 1 uF are the AT8833 datasheet values (TI's DRV8833 uses 0.01 uF and 2.2 uF).\nnFAULT (open drain) of every driver is wire-ORed onto LADDER: a fault pulls it to 0 V (STOP).\nSecond source: JSMSEMI DRV8833RTYR (same QFN-16 4x4); check its pinout against TI's first."
 		(exclude_from_sim no)
 		(at 95.25 203.2 0)
 		(effects

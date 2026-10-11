@@ -40,6 +40,7 @@ CPL_FIX = {
     "C82942": (270, 0.0, 0.0),        # ME6211 SOT-23-5 (LCSC footprint is drawn vertical)
     "C7484": (180, 0.033, 0.0),       # 74AHCT1G125 SOT-23-5
     "C5349955": (180, 0.0, 0.0),      # WS2812B-2020
+    "C2843785": (270, 0.0, 0.0),      # WS2812B 5050 (XL-5050RGBC-2812B)
     "C165948": (0, 0.0, 1.571),       # USB-C TYPE-C-31-M-12
     "C160394": (180, 0.0, -0.063),    # JST SH 8-pin
     "C160390": (0, 0.0, -0.062),      # JST SH 4-pin
@@ -55,6 +56,7 @@ CPL_FIX = {
 # LCSC -> {KiCad pad: JLCPCB pad} where the library numbers pins differently.
 PAD_MAP = {
     "C22452": {"1": "2", "2": "1"},  # SS54: JLCPCB has 1 = anode, 2 = cathode; KiCad's diodes are 1 = cathode
+    "C411344": {"1": "2", "2": "1"},  # CMLW201610S3R3MST (single_sh_proto L1): pads numbered the other way; unpolarized
 }
 
 

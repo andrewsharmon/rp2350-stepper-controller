@@ -56,7 +56,7 @@
 		)
 		(uuid "f103ebdd-995b-54fc-858a-58ac904a276c")
 	)
-	(text "10x AT8833CQ dual H-bridge\n0.82 ohm current-limit sense\nnSLEEP pull-up, V5 bulk\nnFAULT onto LADDER"
+	(text "10x AT8833CQ dual H-bridge\n1 ohm current-limit sense\nnSLEEP pull-up, V5 bulk\nnFAULT onto LADDER"
 		(exclude_from_sim no)
 		(at 220.98 68.58 0)
 		(effects

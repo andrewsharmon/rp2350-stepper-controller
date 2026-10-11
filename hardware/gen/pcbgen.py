@@ -111,7 +111,7 @@ def outline(board, w, h, r):
     arc(None, (x0, y0 + r), (x0 + k, y0 + k), (x0 + r, y0))
 
 
-def zone(board, net, layer, w, h, inset=0.3, pts=None, priority=0):
+def zone(board, net, layer, w, h, inset=0.3, pts=None, priority=0, clearance=None):
     """Copper pour over the whole board (w x h), or over the polygon pts (sheet mm)."""
     z = pcbnew.ZONE(board)
     z.SetLayer(layer)
@@ -126,6 +126,8 @@ def zone(board, net, layer, w, h, inset=0.3, pts=None, priority=0):
     for x, y in pts:
         poly.Append(MM(x), MM(y))
     z.SetMinThickness(MM(0.15))
+    if clearance is not None:
+        z.SetLocalClearance(MM(clearance))
     z.SetPadConnection(pcbnew.ZONE_CONNECTION_THERMAL)
     board.Add(z)
 
@@ -137,7 +139,12 @@ def place(fp, x, y, rot=0, bottom=False):
     fp.SetOrientationDegrees(rot)
 
 
-def jlc_rules(board, thickness=1.0):
+# JLCPCB's cheapest via class (no extra cost): 0.3 mm drill, used with a 0.52 mm
+# pad so the annular ring is 0.11 mm (JLCDFM flags 0.1 and under as danger).
+BIG_VIAS = {"single_sh_proto"}
+
+
+def jlc_rules(board, thickness=1.0, big_vias=False):
     """JLCPCB 4-layer capabilities with some margin."""
     ds = board.GetDesignSettings()
     ds.SetBoardThickness(MM(thickness))
@@ -151,18 +158,22 @@ def jlc_rules(board, thickness=1.0):
     ds.m_CopperEdgeClearance = MM(0.3)
     ds.m_SilkClearance = MM(0.05)
     ds.m_MinSilkTextHeight = MM(0.6)
+    if big_vias:
+        ds.m_ViasMinSize = MM(0.45)
+        ds.m_MinThroughDrill = MM(0.3)
 
 
-def jlc_netclasses(pro_path):
+def jlc_netclasses(pro_path, big_vias=False):
     """Net classes live in the project file."""
+    vd, vh = (0.52, 0.3) if big_vias else (0.3, 0.15)    # 0.52 / 0.3: 0.11 mm annular ring (JLCDFM: <= 0.1 is danger)
     pro = json.load(open(pro_path))
     ns = pro.setdefault("net_settings", {})
     ns["classes"] = [
-        {"name": "Default", "clearance": 0.1, "track_width": 0.15, "via_diameter": 0.3, "via_drill": 0.15,
+        {"name": "Default", "clearance": 0.1, "track_width": 0.15, "via_diameter": vd, "via_drill": vh,
          "diff_pair_width": 0.2, "diff_pair_gap": 0.15, "microvia_diameter": 0.3, "microvia_drill": 0.1,
          "wire_width": 6, "bus_width": 12, "line_style": 0, "pcb_color": "rgba(0, 0, 0, 0.000)",
          "schematic_color": "rgba(0, 0, 0, 0.000)", "priority": 2147483647},
-        {"name": "Power", "clearance": 0.1, "track_width": 0.25, "via_diameter": 0.3, "via_drill": 0.15,
+        {"name": "Power", "clearance": 0.1, "track_width": 0.25, "via_diameter": vd, "via_drill": vh,
          "diff_pair_width": 0.2, "diff_pair_gap": 0.15, "microvia_diameter": 0.3, "microvia_drill": 0.1,
          "wire_width": 6, "bus_width": 12, "line_style": 0, "pcb_color": "rgba(0, 0, 0, 0.000)",
          "schematic_color": "rgba(0, 0, 0, 0.000)", "priority": 0},
@@ -572,13 +583,246 @@ def single_sh(board, fps):
     return placed
 
 
-BOARDS = {"controller": controller, "driver": driver, "single_sh": single_sh}
-LAYERS = {"controller": 4, "driver": 4, "single_sh": 4}
+# ---------------------------------------------------------------------------
+# single_sh_proto: the single_sh circuit with every passive 0603 (JLCPCB basic)
+# and JLCPCB's cheapest via class (0.3 mm drill, 0.52 mm pads). Same linear arrangement,
+# outline grown to 150 x 30 mm so the larger parts and vias fit:
+#
+#   USB-C + power | drivers M4-M1 | MCU | drivers M10-M5 | LED strip
+#
+# Driver cell: AT8833 rotated 90 as on single_sh, but the VINT / VM / VCP caps
+# stand vertically above it (0603 is too wide for a row of three), and a
+# pair's two drivers sit 7.5 mm apart (6.5 on single_sh) for via room.
+# ---------------------------------------------------------------------------
+
+SP_L, SP_W = 150.0, 30.0
+SP_VD = SP_W - 10.3                         # driver row centre (v)
+SP_PAIRS = [("J12", 3, 4, 36.0), ("J11", 1, 2, 52.0),                       # (conn, odd, even, u)
+            ("J15", 9, 10, 94.0), ("J14", 7, 8, 110.0), ("J13", 5, 6, 126.0)]
+SP_UM = 73.0                                # MCU centre (u)
+SP_VM = 14.0                                # MCU centre (v)
+
+
+def sp_xy(u, v):
+    return CX - SP_L / 2 + u, CY - SP_W / 2 + v
+
+
+def single_sh_proto(board, fps):
+    outline(board, SP_L, SP_W, 1.0)
+    placed = set()
+    taken = []
+
+    def crtyd(fp):
+        bb = fp.GetCourtyard(pcbnew.F_CrtYd).BBox()
+        return [pcbnew.ToMM(v) for v in (bb.GetLeft(), bb.GetTop(), bb.GetRight(), bb.GetBottom())]
+
+    def clear(a, margin=0.0):
+        x0, y0 = sp_xy(margin, margin)
+        x1, y1 = sp_xy(SP_L - margin, SP_W - margin)
+        if a[0] < x0 or a[1] < y0 or a[2] > x1 or a[3] > y1:
+            return False
+        return all(a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1] for b in taken)
+
+    def put(ref, u, v, rot=0):
+        place(fps[ref], *sp_xy(u, v), rot=rot)
+        placed.add(ref)
+        taken.append(crtyd(fps[ref]))
+
+    def put_near(ref, u, v, rot=0, reach=8.0, gap=0.25):
+        """Place at (u, v), or the nearest spot (0.1 mm grid spiral) whose courtyard clears the rest by gap."""
+        fp = fps[ref]
+        steps = int(reach / 0.1)
+        cands = sorted(((du, dv) for du in range(-steps, steps + 1) for dv in range(-steps, steps + 1)),
+                       key=lambda d: d[0] ** 2 + d[1] ** 2)
+        for du, dv in cands:
+            place(fp, *sp_xy(u + du * 0.1, v + dv * 0.1), rot=rot)
+            a = crtyd(fp)
+            if clear([a[0] - gap, a[1] - gap, a[2] + gap, a[3] + gap], 0.1):
+                if du * du + dv * dv > 100:
+                    print(f"  {ref}: moved {du * 0.1:.1f}, {dv * 0.1:.1f}")
+                placed.add(ref)
+                taken.append(a)
+                return
+        print(f"  {ref}: no room near ({u}, {v}), left off the board")
+
+    def tidy(parts):
+        """Place at exactly (u, v); report (don't move) parts whose courtyard hits another."""
+        for ref, (u, v, r) in parts.items():
+            place(fps[ref], *sp_xy(u, v), rot=r)
+            if not clear(crtyd(fps[ref]), 0.1):
+                print(f"  {ref}: courtyard clash at ({u}, {v})")
+            placed.add(ref)
+            taken.append(crtyd(fps[ref]))
+
+    def row(parts, u, v_edge=0.05, gap=0.6):
+        """Pack parts left to right along the -y edge from u, courtyards touching v_edge."""
+        for ref, rot in parts:
+            fp = fps[ref]
+            place(fp, 0, 0, rot=rot)
+            bb = crtyd(fp)
+            x0, y0 = sp_xy(u, v_edge)
+            place(fp, x0 - bb[0], y0 - bb[1], rot=rot)
+            placed.add(ref)
+            taken.append(crtyd(fp))
+            u = crtyd(fp)[2] - (CX - SP_L / 2) + gap
+
+    def cell(m, u):
+        vd = SP_VD
+        put(f"U{m}", u, vd, 90)
+        # Sense resistors: ISEN pads at u -/+ 0.975, straight below the chip's
+        # ISEN pins; the 1.15 mm gap between them takes BOUT2 (straight down)
+        # and the AOUT2 via; BOUT1 passes between R_B's pads.
+        put(f"R{2 * m - 1}", u - 1.8, vd + 3.6, 180)      # AISEN
+        put(f"R{2 * m}", u + 1.8, vd + 3.6, 0)            # BISEN
+        # Caps vertical, pin 1 toward the chip: VINT over pin 12, VM over
+        # pins 10/11, VCP over pin 9. 1.15 mm from the chip's pins to the cap
+        # pads: room for pin 10's 0.5 mm V5 via with 0.12 mm to both.
+        put(f"C{3 * m - 2}", u - 1.75, vd - 4.75, 90)       # VINT
+        put(f"C{3 * m}", u, vd - 4.75, 90)                  # VM (V5 pin 1)
+        put(f"C{3 * m - 1}", u + 1.75, vd - 4.75, 90)       # VCP
+
+    for conn, odd, even, uc in SP_PAIRS:
+        put(conn, uc, SP_W - 2.4, 180)
+        cell(even, uc - 4.325)
+        cell(odd, uc + 3.175)
+        # Keep small parts out of the driver cells and the routing space round them.
+        taken.append([*sp_xy(uc - 8.0, SP_VD - 6.6), *sp_xy(uc + 6.9, SP_W)])
+
+    usb = fps["J1"]
+    # Shell slots 0.1 mm wider than the library's, pads grown to keep a 0.2 mm
+    # copper ring all round.
+    for p in usb.Pads():
+        if p.GetAttribute() == pcbnew.PAD_ATTRIB_PTH:
+            d = p.GetDrillSize()
+            d = pcbnew.VECTOR2I(d.x + MM(0.1), d.y)
+            p.SetDrillSize(d)
+            p.SetSize(pcbnew.VECTOR2I(max(p.GetSize().x, d.x + MM(0.4)), max(p.GetSize().y, d.y + MM(0.4))))
+    place(usb, *sp_xy(3.7, SP_W / 2), rot=270)
+    bb = usb.GetCourtyard(pcbnew.F_CrtYd).BBox()
+    usb.Move(pcbnew.VECTOR2I(MM(sp_xy(-0.5, 0)[0]) - bb.GetLeft(), 0))
+    placed.add("J1")
+    taken.append(crtyd(usb))
+
+    # USB / power end. Columns and rows on a 0.5 mm grid, passives horizontal.
+    vc = SP_W / 2
+    tidy({
+        "SW1": (3.5, 2.4, 0), "SW2": (3.5, SP_W - 2.4, 0),
+        # CC pull-downs above / below the ESD diode, USB series resistors after it.
+        "R28": (11.5, vc - 3.0, 0), "U12": (11.5, vc, 0), "R29": (11.5, vc + 3.0, 0),
+        "R26": (15.0, vc - 0.9, 0), "R27": (15.0, vc + 0.9, 0),
+        # LDO row: input cap, LDO, output cap.
+        "C53": (18.5, vc - 2.5, 0), "U13": (22.5, vc - 2.5, 0), "C55": (26.5, vc - 2.5, 0),
+        # Soft-start row: gate cap and resistor, then the FET.
+        "C54": (19.0, vc + 6.0, 0), "R30": (19.0, vc + 8.0, 0), "Q1": (22.5, vc + 7.0, 0),
+        # VBUS -> F1 -> D1 -> V5_IN along the edge.
+        "F1": (11.5, SP_W - 2.3, 0), "D1": (19.0, SP_W - 2.4, 180), "C52": (24.5, SP_W - 2.4, 90),
+    })
+
+    # MCU and core regulator (pins 61-65 at its -x face, -y end).
+    um, vm = SP_UM, SP_VM
+    put("U11", um, vm, 90)
+    for ref, (u, v, r) in {
+        "C44": (um - 7.4, vm - 2.6, 180), "L1": (um - 7.6, vm - 5.8, 90), "C48": (um - 7.6, vm - 8.6, 180),
+        "C49": (um - 10.2, vm - 5.8, 90), "R24": (um - 11.9, vm - 5.8, 90),
+        # Crystal above the MCU's +x corner, clear of the M5-M10 input buses that
+        # fan out from the +x face; XIN / XOUT (pins 30 / 31) run up to it.
+        "Y1": (um + 10.0, vm - 7.0, 0), "R25": (um + 7.2, vm - 7.0, 90),
+        "C50": (um + 12.8, vm - 7.0, 90), "C51": (um + 10.0, vm - 9.6, 0),
+    }.items():
+        put_near(ref, u, v, r, reach=3.0)
+
+    u11 = fps["U11"]
+    ox, oy = sp_xy(um, vm)
+    pad_at = {p.GetNumber(): p.GetPosition() for p in u11.Pads()}
+    decoupling = [("C35", "5"), ("C45", "10"), ("C36", "15"), ("C37", "24"), ("C38", "29"), ("C46", "32"),
+                  ("C39", "41"), ("C40", "50"), ("C47", "51"), ("C41", "59"), ("C42", "68"), ("C43", "76")]
+    for ref, pin in decoupling:
+        q = pad_at[pin]
+        px, py = pcbnew.ToMM(q.x) - ox, pcbnew.ToMM(q.y) - oy
+        side = abs(px) > abs(py)
+        fp = fps[ref]
+        # 2.6 mm out: room for a 0.45 mm via ring between the pins and the cap.
+        for along in sorted((k * 0.05 for k in range(-80, 81)), key=abs):
+            if side:
+                x, y, r = ox + px + 2.6 * (1 if px > 0 else -1), oy + py + along, 0 if px > 0 else 180
+            else:
+                x, y, r = ox + px + along, oy + py + 2.6 * (1 if py > 0 else -1), 270 if py > 0 else 90
+            place(fp, x, y, rot=r)
+            a = crtyd(fp)
+            if clear([a[0] - 0.15, a[1] - 0.15, a[2] + 0.15, a[3] + 0.15]):
+                break
+        else:
+            raise SystemExit(f"no room for {ref} by U11 pin {pin}")
+        taken.append(crtyd(fp))
+        placed.add(ref)
+
+    # Misc parts along the -y edge, over the drivers.
+    put("SW3", 14.0, 2.4, 180)              # in line with SW1
+    row([("J2", 0), ("J3", 0), ("J7", 0)], 28.0)
+    row([("J8", 0), ("J4", 0), ("D3", 180), ("U14", 0), ("D2", 0), ("J6", 0)], um + 14.0)
+    # D2 is the 5050 WS2812B (the 2020 is JLCPCB Standard-PCBA only): set by hand,
+    # J6 shifted right to make room. The routed board also trims D2's courtyard to
+    # 0.05 mm round the pads (the library one overlaps U14's) and keeps only a
+    # pin-1 silk bar.
+    put("D2", 119.35, 2.85, 180)
+    put("J6", 125.485, 2.295, 0)
+    put("J5", SP_L - 4.4, SP_W / 2 - 1.0, 90)
+
+    tidy({
+        # Under the -y edge connectors, v = 7: each part below what it serves.
+        "R34": (8.0, 7.0, 0), "R36": (14.0, 7.0, 0),                           # BTN1, BOOTSEL
+        "R35": (8.0, SP_W - 7.0, 0),                                            # BTN2
+        "R31": (30.0, 7.0, 0), "R32": (33.2, 7.0, 0), "JP2": (37.0, 7.0, 0),   # I2C pull-ups
+        "JP1": (41.0, 7.0, 0),                                                  # Qwiic supply
+        "JP4": (46.0, 7.0, 0), "R39": (49.5, 7.0, 0),                           # e-stop
+        # MCU sense / ladder / ID row along the edge: VMOT divider, LADDER, BOARD_ID.
+        # Standing vertically, 2 mm pitch.
+        # R22 (V5 side of the divider) just outside the In2 3V3 island, V5 pin
+        # down, so its V5 via can land in the plane.
+        "R22": (um - 14.5, 1.9, 90), "R23": (um - 4.0, 1.9, 90), "C34": (um - 2.0, 1.9, 90),
+        "R33": (um + 0.0, 1.9, 90), "C56": (um + 2.0, 1.9, 90),
+        "R37": (um + 4.0, 1.9, 90), "R42": (um + 6.0, 1.9, 90),
+        "R21": (um - 10.0, SP_W - 8.0, 0), "TP5": (um - 10.0, SP_W - 5.5, 0),  # nSLEEP, 3V3 pad
+        "C32": (um - 7.0, SP_W - 2.4, 0), "C33": (um + 7.0, SP_W - 2.4, 0),    # V5 bulk
+        "TP1": (um - 3.3, SP_W - 2.4, 0), "TP2": (um - 1.1, SP_W - 2.4, 0),     # SWD, RUN, GND
+        "TP3": (um + 1.1, SP_W - 2.4, 0), "TP4": (um + 3.3, SP_W - 2.4, 0),     # along the edge
+        "R40": (89.0, 7.0, 0), "R41": (92.2, 7.0, 0),                           # panel buttons
+        "C59": (99.5, 7.0, 0),                                                  # 5 V in
+        "C57": (114.0, 7.0, 0), "C58": (118.0, 7.0, 0),                         # LED buffer, LED
+        "C31": (129.5, 7.0, 0), "C61": (132.7, 7.0, 0),                         # V5 bulk, strip power
+        # LED strip column.
+        "R38": (SP_L - 10.0, 12.5, 0), "U15": (SP_L - 10.0, 16.0, 90), "C60": (SP_L - 10.0, 19.5, 0),
+        "JP3": (SP_L - 10.0, SP_W - 2.4, 0), "F2": (SP_L - 3.6, SP_W - 2.8, 0),
+    })
+
+    # In2: 3V3 under the MCU, joined to the LDO by a finger along the -y edge;
+    # V5 everywhere else, cut out round it.
+    e, g = 0.3, 0.3
+    i0, i1, i3 = um - 12.5, um + 9.0, SP_W - 3.5
+    l0, l1, lv = 15.0, 27.0, 10.5            # LDO pocket (u0, u1, v)
+    v3 = [(l0, e), (i1, e), (i1, i3), (i0, i3), (i0, 2.4), (l1, 2.4), (l1, lv), (l0, lv)]
+    v5 = [(e, e), (l0 - g, e), (l0 - g, lv + g), (l1 + g, lv + g), (l1 + g, 2.4 + g),
+          (i0 - g, 2.4 + g), (i0 - g, i3 + g), (i1 + g, i3 + g), (i1 + g, e), (SP_L - e, e),
+          (SP_L - e, SP_W - e), (e, SP_W - e)]
+    nets = {p.GetNetname(): p.GetNet() for fp in fps.values() for p in fp.Pads()}
+    zone(board, nets["+3V3"], pcbnew.In2_Cu, 0, 0, pts=[sp_xy(*q) for q in v3], priority=1, clearance=0.2)
+    zone(board, nets["V5"], pcbnew.In2_Cu, 0, 0, pts=[sp_xy(*q) for q in v5], clearance=0.2)
+    # +1V1 under the MCU body (inside its pin ring): the four +1V1 pins, one per
+    # face, each drop to a via just inboard of the pin instead of ringing the chip.
+    k = 4.1
+    zone(board, nets["+1V1"], pcbnew.In2_Cu, 0, 0, priority=2, clearance=0.2,
+         pts=[sp_xy(um + du, vm + dv) for du, dv in ((-k, -k), (k, -k), (k, k), (-k, k))])
+    return placed
+
+
+BOARDS = {"controller": controller, "driver": driver, "single_sh": single_sh, "single_sh_proto": single_sh_proto}
+LAYERS = {"controller": 4, "driver": 4, "single_sh": 4, "single_sh_proto": 4}
 # Outline (w, h) in mm and board thickness.
-SIZES = {"controller": (30.0, 30.0, 1.0), "driver": (30.0, 30.0, 1.0), "single_sh": (SH_L, SH_W, 1.6)}
+SIZES = {"controller": (30.0, 30.0, 1.0), "driver": (30.0, 30.0, 1.0), "single_sh": (SH_L, SH_W, 1.6),
+         "single_sh_proto": (SP_L, SP_W, 1.6)}
 ZONES = {"controller": [("/GND", pcbnew.In1_Cu), ("/+3V3", pcbnew.In2_Cu)],
          "driver": [("/GND", pcbnew.In1_Cu), ("/V5", pcbnew.In2_Cu)],
-         "single_sh": [("GND", pcbnew.In1_Cu)]}      # global power nets; In2 zones: see single_sh()
+         "single_sh": [("GND", pcbnew.In1_Cu)], "single_sh_proto": [("GND", pcbnew.In1_Cu)]}      # global power nets; In2 zones: see single_sh()
 
 
 def build(name, out_dir):
@@ -636,14 +880,16 @@ def build(name, out_dir):
         x += bw
         row_h = max(row_h, bh)
 
-    jlc_rules(board, thickness)
+    jlc_rules(board, thickness, name in BIG_VIAS)
     for net, layer in ZONES[name]:
-        zone(board, netinfo[net], layer, w, h)
+        # 0.2 mm on the big-via board: the default 0.5 mm round dense via
+        # fields (under the MCU) splits the planes into islands.
+        zone(board, netinfo[net], layer, w, h, clearance=0.2 if name in BIG_VIAS else None)
     # Zones are left unfilled: the scripted filler doesn't apply the board
     # rules (edge and hole clearance). Press B in the PCB editor to fill.
 
     board.Save(pcb_path)
-    jlc_netclasses(os.path.join(out_dir, name + ".kicad_pro"))  # after Save, which rewrites the project
+    jlc_netclasses(os.path.join(out_dir, name + ".kicad_pro"), name in BIG_VIAS)  # after Save, which rewrites the project
     print(f"{pcb_path}: {len(fps)} footprints, {len(placed)} placed, {len(nets)} nets")
 
 

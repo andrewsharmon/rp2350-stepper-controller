@@ -16,6 +16,13 @@ from schgen import FP_LIB_TABLE
 from sexp import Sym, dump
 
 AT8833 = "stack:AT8833CQ"
+NAME = "single_sh"      # board being drawn; set by draw()
+REFS = set()            # its part references
+# Per board: outline, and an extra line for the overview sheet.
+BOARD = {
+    "single_sh": ("122 x 20 mm", ""),
+    "single_sh_proto": ("150 x 30 mm", "Prototype: every passive 0603 and a JLCPCB basic part; 0.45 / 0.3 mm vias.\n"),
+}
 LIB_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "lib")
 
 
@@ -242,6 +249,10 @@ def draw_power(sh):
             "Wait about 100 ms after power-up before energizing motors (soft-start settling).\n"
             "USB: 27 ohm series resistors at the MCU side; TPD2E2U06 ESD (1.5 pF) at the receptacle.")
 
+    if "TP7" in REFS:
+        sh.frame(200.66, 137.16, 256.54, 177.8, "Bring-up test point")
+        bringup_tp(sh, "TP7", 215.9, 152.4, "local")
+
 
 # ---------------------------------------------------------------------------
 # MCU: RP2354B, supplies, core regulator, crystal, BOOTSEL, SWD
@@ -422,11 +433,15 @@ def draw_drivers(sh):
     notes(sh, 92.71, 195.58, 241.3,
             "AT8833CQ (Zhongkewei, LCSC C5120769): DRV8833-compatible logic, 00 coast, 01 reverse, 10 forward, 11 brake.\n"
             "VM is the V5 bus directly. Inputs have internal 100k pull-downs; nSLEEP is pulled high (always awake).\n"
-            "xISEN: 0.82 ohm 0603 to ground; the chip chops at VTRIP / R = 0.2-0.29 A (VTRIP 160-240 mV), slow decay.\n"
+            "xISEN: 1 ohm 0603 to ground; the chip chops at VTRIP / R = 0.16-0.24 A (VTRIP 160-240 mV), slow decay.\n"
             "Give each sense resistor its own return to the star ground.\n"
             "VCP 0.1 uF to VM and VINT 1 uF are the AT8833 datasheet values (TI's DRV8833 uses 0.01 uF and 2.2 uF).\n"
             "nFAULT (open drain) of every driver is wire-ORed onto LADDER: a fault pulls it to 0 V (STOP).\n"
             "Second source: JSMSEMI DRV8833RTYR (same QFN-16 4x4); check its pinout against TI's first.")
+
+    if "TP13" in REFS:
+        sh.frame(248.92, 195.58, 299.72, 233.68, "Bring-up test point")
+        bringup_tp(sh, "TP13", 264.16, 210.82, "local")
 
 
 # ---------------------------------------------------------------------------
@@ -452,11 +467,19 @@ def draw_io(sh):
         j = sh.place(ref, x, 50.8, ref_at=(0, -10.16, "center"), val_at=(0, 13.97, "center"))
         for pin in range(1, 9):
             sh.pin_label(j, str(pin), "global", shape="input")
-    sh.text(20.32, 69.85,
-            "JST-SH 8P (BM08B-SRSS-TB), two 8 mm micro steppers per plug: pins 1-4 = first motor A1 A2 B1 B2, "
-            "pins 5-8 = second motor.\n"
-            "Firmware remaps coil order and polarity per axis, so lead-colour variations are fixed in software.",
-            size=1.27)
+    if NAME == "single_sh_proto":
+        sh.text(20.32, 69.85,
+                "JST-SH 8P (BM08B-SRSS-TB), two 8 mm micro steppers per plug, one motor's coils on the outer pins "
+                "and the other's on the inner ones:\n"
+                "pins 1 2 7 8 = even motor A1 A2 B1 B2 (cable's outer motor); pins 6 5 3 4 = odd motor A1 A2 B1 B2 "
+                "(coils swapped, A reversed: firmware CONFIG_FLAG_SWAP_COILS / REVERSE).",
+                size=1.27)
+    else:
+        sh.text(20.32, 69.85,
+                "JST-SH 8P (BM08B-SRSS-TB), two 8 mm micro steppers per plug: pins 1-4 = first motor A1 A2 B1 B2, "
+                "pins 5-8 = second motor.\n"
+                "Firmware remaps coil order and polarity per axis, so lead-colour variations are fixed in software.",
+                size=1.27)
 
     # Status LED, then the buffered strip output.
     sh.frame(17.78, 83.82, 215.9, 142.24, "Status LED and LED strip output")
@@ -572,22 +595,47 @@ def draw_io(sh):
     sh.text(223.52, 187.96, "4.7 k to GND = io_sh connectors (dual 8 mm micro steppers).\n"
                             "10 k 1% pull-up; levels in hardware/README.md.", size=1.27)
 
+    # Bring-up test pads (single_sh_proto).
+    if "TP6" in REFS:
+        sh.frame(220.98, 200.66, 325.12, 256.54, "Bring-up test points")
+        for k, (ref, kind) in enumerate((("TP6", "up"), ("TP8", "up"), ("TP9", "up"), ("TP10", "down"),
+                                         ("TP17", "down"))):
+            bringup_tp(sh, ref, 231.14 + 17.78 * k, 218.44, kind)
+        for k, ref in enumerate(("TP11", "TP12", "TP14", "TP15")):
+            bringup_tp(sh, ref, 231.14 + 17.78 * k, 233.68, "global")
+        bringup_tp(sh, "TP16", 231.14 + 17.78 * 4, 233.68, "local")
+
+
+def bringup_tp(sh, ref, x, y, kind):
+    """A bring-up test pad: kind 'up' / 'down' = supply / ground power symbol,
+    'global' / 'local' = net label below the pad."""
+    if kind == "up":
+        tp = sh.place(ref, x, y, rot=180, ref_at=(2.54, 1.27, "left"), val_at=(2.54, 3.81, "left"))
+        sh.pin_power(tp, "1", 2.54)
+    elif kind == "down":
+        tp = sh.place(ref, x, y, ref_at=(2.54, -3.81, "left"), val_at=(2.54, -1.27, "left"))
+        sh.pin_power(tp, "1", 2.54)
+    else:
+        tp = sh.place(ref, x, y, ref_at=(2.54, -3.81, "left"), hide_value=True)
+        sh.pin_label(tp, "1", kind)
+    return tp
+
 
 # ---------------------------------------------------------------------------
 # Overview (root sheet)
 # ---------------------------------------------------------------------------
 
 def draw_root(sh, pwr, mcu, drv, io):
-    sh.text(25.4, 30.48, "RP2350 stepper controller - single board, dual 8 mm micro steppers (single_sh)",
+    sh.text(25.4, 30.48, f"RP2350 stepper controller - single board, dual 8 mm micro steppers ({NAME})",
             size=3.0, bold=True)
-    sh.text(25.4, 38.1, "Controller, universal driver and io_sh connector boards on one 122 x 20 mm, 4-layer PCB. "
+    sh.text(25.4, 38.1, f"Controller, universal driver and io_sh connector boards on one {BOARD[NAME][0]}, 4-layer PCB. "
                         "Click a sheet to open it.", size=1.5)
     w, h, y = 66.04, 30.48, 63.5
     xs = [25.4, 121.92, 218.44, 314.96]
     blurbs = [
         "USB-C receptacle, ESD, CC sense\nPTC, Schottky, soft-start P-FET\n3.3 V LDO\nexternal 5 V input\nV5 sense divider",
         "RP2354B, 2 MB flash in package\ncore regulator, 12 MHz crystal\nsupply decoupling\nBOOTSEL, SWD pads",
-        "10x AT8833CQ dual H-bridge\n0.82 ohm current-limit sense\nnSLEEP pull-up, V5 bulk\nnFAULT onto LADDER",
+        "10x AT8833CQ dual H-bridge\n1 ohm current-limit sense\nnSLEEP pull-up, V5 bulk\nnFAULT onto LADDER",
         "5x JST-SH 8P motor plugs\nQwiic x2, status LED, LED strip\nbuttons, e-stop, panel ladder\nboard ID",
     ]
     for x, s, blurb in zip(xs, (pwr, mcu, drv, io), blurbs):
@@ -611,7 +659,8 @@ def draw_root(sh, pwr, mcu, drv, io):
 
     sh.text(25.4, 132.08, "Board", size=2.0, bold=True)
     sh.text(25.4, 137.16,
-            "122 x 20 mm, 4 layers (F.Cu parts and signals, In1 GND, In2 V5 with a 3V3 island, B.Cu signals), 1.6 mm.\n"
+            f"{BOARD[NAME][0]}, 4 layers (F.Cu parts and signals, In1 GND, In2 V5 with a 3V3 island, B.Cu signals), 1.6 mm.\n"
+            f"{BOARD[NAME][1]}"
             "All parts on top. Along the board: USB-C and power path | drivers M4-M1 | MCU | drivers M10-M5 | LED strip.\n"
             "Motor plugs along one long edge (J12 J11 | J15 J14 J13); Qwiic, buttons, e-stop, 5 V in and LED power along the other.\n"
             "Same circuit as the controller / driver / io_sh stack with the board-to-board connectors removed;\n"
@@ -641,14 +690,18 @@ def write(sch, out_dir):
 
 
 def draw(sch):
-    """Build the Design for build.single('single_sh', ...)'s Schematic."""
+    """Build the Design for build.single('single_sh', ...)'s Schematic (or single_sh_proto's)."""
+    global NAME, REFS
+    NAME = sch.name
+    REFS = {p.ref for p in sch.parts}
+    n = NAME
     d = schdraw.Design(sch.name, sch.title, sch.parts)
-    d.root.title = "Single board (single_sh) - overview"   # sch.title is too long for the title block
+    d.root.title = f"Single board ({n}) - overview"   # sch.title is too long for the title block
     d.extra_symdefs[AT8833] = at8833_symbol()
-    pwr = d.sheet("Power", "power.kicad_sch", "Single board (single_sh) - power and USB")
-    mcu = d.sheet("MCU", "mcu.kicad_sch", "Single board (single_sh) - RP2354B")
-    drv = d.sheet("Motor drivers", "drivers.kicad_sch", "Single board (single_sh) - motor drivers")
-    io = d.sheet("Connectors and UI", "io.kicad_sch", "Single board (single_sh) - connectors and user interface")
+    pwr = d.sheet("Power", "power.kicad_sch", f"Single board ({n}) - power and USB")
+    mcu = d.sheet("MCU", "mcu.kicad_sch", f"Single board ({n}) - RP2354B")
+    drv = d.sheet("Motor drivers", "drivers.kicad_sch", f"Single board ({n}) - motor drivers")
+    io = d.sheet("Connectors and UI", "io.kicad_sch", f"Single board ({n}) - connectors and user interface")
     draw_power(pwr)
     draw_mcu(mcu)
     draw_drivers(drv)

@@ -21,6 +21,7 @@ OUT = os.path.dirname(HERE)
 R0402 = "Resistor_SMD:R_0402_1005Metric"
 R0603 = "Resistor_SMD:R_0603_1608Metric"
 C0402 = "Capacitor_SMD:C_0402_1005Metric"
+C0603 = "Capacitor_SMD:C_0603_1608Metric"
 C0805 = "Capacitor_SMD:C_0805_2012Metric"
 SOT23_5 = "Package_TO_SOT_SMD:SOT-23-5"
 SMA = "Diode_SMD:D_SMA"
@@ -91,7 +92,7 @@ PASSIVES = {
     ("4.7u", C0402): ("C23733", "CL05A475MP5NRNC"),      # 10 V X5R
     ("15p", C0402): ("C1548", "0402CG150J500NT"),        # 50 V C0G
     ("10u", C0805): ("C15850", "CL21A106KAYNNNE"),       # 25 V X5R
-    ("0.82", R0603): ("C186570", "SR731JTTDR820F"),      # Viking 1 %, 250 mW, extended (no basic 0.82R)
+    ("1", R0603): ("C22936", "0603WAF100KT5E"),          # UniOhm 1 %, 100 mW, basic (no basic 0.82R)
     ("27", R0402): ("C25100", "0402WGF270JTCE"),         # extended
     ("33", R0402): ("C25105", "0402WGF330JTCE"),
     ("1k", R0402): ("C11702", "0402WGF1001TCE"),
@@ -104,10 +105,38 @@ PASSIVES = {
     ("39k 1%", R0402): ("C25783", "0402WGF3902TCE"),     # extended
     ("47k", R0402): ("C25792", "0402WGF4702TCE"),
     ("100k", R0402): ("C25741", "0402WGF1003TCE"),
+    # single_sh_proto: every passive 0603, all JLCPCB basic (checked 2026-10-10).
+    ("100n", C0603): ("C14663", "CC0603KRX7R9BB104"),    # 50 V X7R
+    ("1u", C0603): ("C15849", "CL10A105KB8NNNC"),        # 50 V X5R
+    ("2.2u", C0603): ("C23630", "CL10A225KO8NNNC"),      # 16 V X5R
+    ("4.7u", C0603): ("C19666", "CL10A475KO8NNNC"),      # 16 V X5R
+    ("15p", C0603): ("C1644", "CL10C150JB8NNNC"),        # 50 V C0G
+    ("10u", C0603): ("C19702", "CL10A106KP8NNNC"),       # 10 V X5R
+    ("22", R0603): ("C23345", "0603WAF220JT5E"),         # USB series (27R 0603 is extended)
+    ("33", R0603): ("C23140", "0603WAF330JT5E"),
+    ("1k", R0603): ("C21190", "0603WAF1001T5E"),
+    ("3.3k 1%", R0603): ("C22978", "0603WAF3301T5E"),
+    ("4.7k", R0603): ("C23162", "0603WAF4701T5E"),
+    ("5.1k", R0603): ("C23186", "0603WAF5101T5E"),
+    ("10k", R0603): ("C25804", "0603WAF1002T5E"),
+    ("10k 1%", R0603): ("C25804", "0603WAF1002T5E"),
+    ("20k 1%", R0603): ("C4184", "0603WAF2002T5E"),
+    ("39k 1%", R0603): ("C23153", "0603WAF3902T5E"),
+    ("47k", R0603): ("C25819", "0603WAF4702T5E"),
+    ("100k", R0603): ("C25803", "0603WAF1003T5E"),
 }
+
+# Footprint / value substitutions applied to every passive; single(proto=True)
+# sets them for the all-0603 single_sh_proto board.
+SUBST_FP = {}
+SUBST_VALUE = {}
+PROTO_FP = {R0402: R0603, C0402: C0603, C0805: C0603}
+PROTO_VALUE = {"27": "22"}
 
 
 def passive(sch, lib_id, prefix, value, fp, nets, kw):
+    fp = SUBST_FP.get(fp, fp)
+    value = SUBST_VALUE.get(value, value)
     if "LCSC" not in kw and (value, fp) in PASSIVES:
         kw["LCSC"], kw["MPN"] = PASSIVES[(value, fp)]
     return sch.add(lib_id, prefix, value, fp, nets, **kw)
@@ -287,8 +316,8 @@ def driver(s=None):
         s.add("Driver_Motor:DRV8833RTY", "U", "AT8833CQ", "Package_DFN_QFN:QFN-16-1EP_4x4mm_P0.65mm_EP2.1x2.1mm",
               nets, ref=u, LCSC="C5120769", MPN="AT8833CQ",
               Note="DRV8833RTY pinout; 2nd source JSMSEMI DRV8833RTYR-JSM C55566425")
-        R(s, "0.82", f"{u}_AISEN", "GND", fp=R0603, Note="chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return")
-        R(s, "0.82", f"{u}_BISEN", "GND", fp=R0603, Note="chops at 0.2-0.29 A (VTRIP 160-240 mV); Kelvin return")
+        R(s, "1", f"{u}_AISEN", "GND", fp=R0603, Note="chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return")
+        R(s, "1", f"{u}_BISEN", "GND", fp=R0603, Note="chops at 0.16-0.24 A (VTRIP 160-240 mV); Kelvin return")
         C(s, "1u", f"{u}_VINT", "GND")
         flags(s, f"{u}_VINT")  # internal regulator output, typed power_in in the symbol
         C(s, "100n", f"{u}_VCP", "V5")
@@ -387,22 +416,66 @@ def sh_motor_pair(s, m):
           LCSC="C160394", MPN="BM08B-SRSS-TB")
 
 
+def sh_motor_pair_nested(s, m):
+    # single_sh_proto: the corrected dual-motor cable pinout, where one motor's
+    # coils take the outer pins and the other's the inner ones. Coil and
+    # polarity per motor are chosen for the layout (the two drivers' outputs
+    # reach the pins without crossing); firmware fixes them per axis with
+    # CONFIG_FLAG_SWAP_COILS / CONFIG_FLAG_REVERSE (firmware/src/config.h).
+    #   outer motor = M(m+1), the pair's left driver: 1 A1, 2 A2, 7 B1, 8 B2
+    #   inner motor = M(m), the right driver: 3 B1, 4 B2, 5 A2, 6 A1
+    #     (coils swapped and one reversed relative to the cable's A/B)
+    if m % 2 == 0:
+        return
+    a1, a2, b1, b2 = motor_nets(m, "out")
+    c1, c2, d1, d2 = motor_nets(m + 1, "out")
+    nets = [c1, c2, b1, b2, a2, a1, d1, d2]
+    s.add("Connector_Generic:Conn_01x08", "J", f"M{m + 1}+M{m}",
+          "Connector_JST:JST_SH_BM08B-SRSS-TB_1x08-1MP_P1.00mm_Vertical",
+          {str(i + 1): n for i, n in enumerate(nets)}, ref=f"J{10 + (m + 1) // 2}",
+          LCSC="C160394", MPN="BM08B-SRSS-TB")
+
+
 # ---------------------------------------------------------------------------
 # Single board: all three tiers on one PCB, no BTB connectors
 # ---------------------------------------------------------------------------
 
-def single(name, title, motor_conn, board_id_r):
+def single(name, title, motor_conn, board_id_r, proto=False):
     """Controller + driver + one IO variant on one board.
 
     Same circuit as the stack, with the BTBs removed: their nets join directly.
     The board-ID resistor is kept so firmware identifies the motor connector
     variant the same way.
     """
+    SUBST_FP.clear(), SUBST_VALUE.clear()
+    if proto:   # all passives 0603, JLCPCB basic
+        SUBST_FP.update(PROTO_FP), SUBST_VALUE.update(PROTO_VALUE)
     s = Schematic(name, title, paper="A1")
     driver(s)  # fixed refs U1-U10 first; the other parts number around them
     controller(s)
     io_board(name, title, motor_conn, board_id_r, s)
     flags(s, "GND", "V5", "V5_IN", "+1V1", "VREG_AVDD", "VBUS", "+5V_EXT", "STRIP_5V")
+    SUBST_FP.clear(), SUBST_VALUE.clear()
+    if proto:
+        # Bring-up test pads (copper only, like TP1-TP5): every supply rail, the
+        # shared ADC / open-drain lines, I2C and the LED chain.
+        for net in ["VBUS", "V5_IN", "V5", "+1V1", "GND", "LADDER", "VMOT_SENSE", "NSLEEP",
+                    "SDA", "SCL", "LED_DATA", "GND"]:
+            s.add("Connector:TestPoint", "TP", net, TP, {"1": net}, in_bom=False)
+        # The Abracon AOTA inductor ran out at JLCPCB (4 left, 2026-10-11): a
+        # stocked shielded 3.3 uH 2016 part instead. Not the part Raspberry Pi
+        # validated; no polarity mark.
+        for part in s.parts:
+            if part.fields.get("LCSC") == "C42411119":
+                part.fields.update(LCSC="C411344", MPN="CMLW201610S3R3MST",
+                                   Note="substitute for AOTA-B201610S3R3-101-T (out of stock); 245 mohm, 1.05 A sat")
+            # The 2020 LED is "Standard PCBA only" at JLCPCB: the 5050 part of the
+            # same family runs on Economic.
+            if part.fields.get("LCSC") == "C5349955":
+                part.lib_id, part.value = "LED:WS2812B", "XL-5050RGBC-2812B"
+                part.footprint = "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm"
+                part.fields.update(LCSC="C2843785", MPN="XL-5050RGBC-2812B",
+                                   Note="XINGLIGHT WS2812B 5050; the 2020 part is JLCPCB Standard-PCBA only")
     return s
 
 
@@ -415,11 +488,13 @@ def main():
         single("single_xh", "Stepper controller - single board, 28BYJ-48 (JST-XH)", xh_motor, "10k"),
         single("single_sh", "Stepper controller - single board, dual 8 mm micro steppers (JST-SH 8P)",
                sh_motor_pair, "4.7k"),
+        single("single_sh_proto", "Stepper controller - single board prototype, all-0603 basic parts (JST-SH 8P)",
+               sh_motor_pair_nested, "4.7k", proto=True),
     ]
     for b in boards:
         out = os.path.join(OUT, b.name)
-        # single_sh has a hand-arranged, wired drawing; the others are label-only.
-        singles = single_sh_sch.write(b, out) if b.name == "single_sh" else b.write(out)
+        # single_sh(_proto) have a hand-arranged, wired drawing; the others are label-only.
+        singles = single_sh_sch.write(b, out) if b.name.startswith("single_sh") else b.write(out)
         print(f"{b.name}: {len(b.parts)} parts; single-pin nets: {', '.join(singles) or 'none'}")
 
 

@@ -52,7 +52,7 @@ connectors at opposite edges. No screws: the enclosure captures the stack.
   - VM 2.7-15 V, UVLO <= 2.5 V, 1.0 A RMS. Inputs have 100 k pull-downs.
   - Second source: JSMSEMI DRV8833RTYR / JSM8833RTYR (same QFN-16 4 x 4). Verify its pinout against TI DRV8833RTY before relying on it.
 - Passives per chip:
-  - AISEN / BISEN: 0.68-0.82 ohm to ground. Above I = 0.2 V / R (Vtrip 160-240 mV) the chip chops the current in slow decay; it does not report a fault. With 0.82 ohm that is 0.2-0.29 A. Give it a separate return to the star ground.
+  - AISEN / BISEN: 0.68-1 ohm to ground. Above I = 0.2 V / R (Vtrip 160-240 mV) the chip chops the current in slow decay; it does not report a fault. With 1 ohm that is 0.16-0.24 A. Give it a separate return to the star ground.
   - VCP: 0.1 uF to VM.
   - VINT: 1 uF.
   - These are the AT8833 datasheet values. TI's DRV8833 uses 0.01 uF and 2.2 uF, so don't copy from it.
@@ -227,6 +227,39 @@ Controller, driver and the `io_sh` connectors on one PCB, from the `single_sh/` 
   - THT parts (JST PH/XH, the USB-C shell legs) are hand soldered, about $6.
 - Vias sit in the QFN exposed pads and in U11 pin 59 (+3V3). JLCPCB doesn't offer tented for this board; plugged (solder mask) is the free option. Epoxy filled & capped costs about $20 more if those joints give trouble.
 
+## Prototype single board (`single_sh_proto`)
+
+Same circuit as `single_sh`, re-made for cheaper fabrication. Started 2026-10-10. Fully routed, DRC and schematic parity clean, and JLCDFM shows no "danger" items (2026-10-11; re-check after the 5050 LED change); unreviewed.
+
+- Every passive is 0603 and a JLCPCB basic part (`PASSIVES` in `gen/build.py`, applied by `single(..., proto=True)`).
+  - 10 uF bulk caps go 0805 -> 0603 (10 V X5R, C19702) on the 5 V rail.
+  - USB series resistors are 22 ohm (C23345): 27 ohm 0603 is extended.
+  - L1: the Abracon AOTA-B201610S3R3-101-T had 4 in stock at JLCPCB (2026-10-11), so this board uses CMLW201610S3R3MST (C411344, 3.3 uH, 245 mohm, 1.05 A sat, shielded, 2016). Not the part Raspberry Pi validated for the core regulator: check the 1V1 ripple on the first boards. No polarity mark; JLCPCB numbers its pads the other way round (`PAD_MAP` in `gen/jlcfab.py`).
+- Status LED D2 is the 5050 XINGLIGHT XL-5050RGBC-2812B (C2843785, 720k in stock 2026-10-11) instead of the 2020: JLCPCB lists the 2020 as Standard-PCBA only, and this board orders Economic. Same WS2812 protocol and data path; J6 moved 2.6 mm right to make room, D2's courtyard trimmed to 0.05 mm round its pads (the library one overlaps U14's).
+- Motor connectors use the corrected dual-motor cable pinout (one motor's coils on the outer pins, the other's on the inner ones), `sh_motor_pair_nested()` in `gen/build.py`. Coil order and polarity are chosen so the drivers' outputs reach the pins without crossing:
+
+  | Pin | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+  |---|---|---|---|---|---|---|---|---|
+  | J11 | M2 A1 | M2 A2 | M1 B1 | M1 B2 | M1 A2 | M1 A1 | M2 B1 | M2 B2 |
+
+  J12-J15 follow the same pattern (M4+M3, M6+M5, M8+M7, M10+M9). The even motor is the cable's outer motor; the odd (inner) motor has its coils swapped and coil A reversed, so its axis needs `CONFIG_FLAG_SWAP_COILS` (and `CONFIG_FLAG_REVERSE` for the same direction) in firmware. `single_sh` and `io_sh` still use the old pinout.
+- Bring-up test pads TP6-TP17 (supplies on top: VBUS, V5IN, V5, GND, VMOT, SDA; signals underneath: 1V1, LADDER, NSLP, SCL, LED, GND), labelled on the silkscreen; placed by `gen/add_testpoints.py`. TP1-TP5 (SWD, RUN, GND, 3V3) as on single_sh.
+- Back silkscreen: a squid whose ten tentacles reach the ten motor drivers, and "ASH+C 2026" (`gen/squid_silk.py`, re-run after any layout change). Reference designators are hidden.
+- **150 x 30 mm**, 4 layers, 1.6 mm: F.Cu / B.Cu signals, In1 solid GND, In2 V5 with a 3V3 island round the MCU and a +1V1 area under its body. Same linear arrangement as single_sh: USB-C and power | M4-M1 | MCU | M10-M5 | LED strip.
+  - USB-C shell slots 0.1 mm wider than the library footprint, pads grown to keep a 0.2 mm ring.
+- Layout rules (all built into the generator and routing scripts):
+  - Vias 0.52 mm pad / 0.3 mm drill (JLCPCB's no-extra-cost 0.3 mm via class; 0.11 mm annular ring, since JLCDFM flags 0.1 mm and under). 0.1 mm copper clearance; plane zones 0.2 mm.
+  - Traces straight or at 45 degrees only, entering pads on their centre line and no wider than the pad.
+  - No vias in pads (except the thermal vias in the AT8833 and RP2354B exposed pads), and every via at least 0.1 mm from any pad, same net included.
+- Layout source: `single_sh_proto()` in `gen/pcbgen.py`.
+  - Driver cells: VINT / VM / VCP caps stand vertically 4.75 mm above each AT8833, leaving room for pin 10's V5 via; pin 11 runs into the exposed pad. A pair's drivers sit 7.5 mm apart, pairs 16 mm. Sense resistors' ISEN pads sit straight below the chip's ISEN pins.
+  - MCU decoupling 2.6 mm out from the pins. Crystal above the MCU's +x corner, test pads along the bottom edge, so the +x face is left to the M5-M10 input buses.
+- Routing (scripts not in the repo; recipe as for single_sh): driver cells pre-routed by script, Freerouting 2.5.0 (45-degree mode, no vias on SMD pads) for the bulk, a small grid router for the last few, then clean-up passes for pad entries and 45-degree segments.
+  - Each pair: the left (outer-motor) driver takes its B outputs straight down on F.Cu and hops its A outputs over the other driver on In2, to vias just below the connector pads. The right (inner-motor) driver fans all four outputs left on F.Cu in nested L's.
+  - LADDER (nFAULT wire-OR): B.Cu drops to a spine under the driver row, one per side. NSLEEP: In2 risers to vias above the cap row; In2 links only join one pair to the next (a link across a pair would cut the In2 V5 pour round the outer driver's caps off from the plane).
+  - The four +1V1 MCU pins each drop to a via into the In2 +1V1 area under the chip.
+- Fabrication: `gen/jlcfab.py single_sh_proto --check` writes `single_sh_proto/jlcpcb/` (142 placements, 36 BOM lines: 21 basic, 15 extended; Economic PCBA; every placement checked against JLCPCB's footprints). Order: 4 layers, 1.6 mm, ENIG, plugged vias, 0.3 mm min via hole.
+
 ## Schematics and BOM
 
 Schematics are generated. Edit `gen/build.py`, not the `.kicad_sch` files. For `single_sh`, part placement and wiring live in `gen/single_sh_sch.py`.
@@ -260,7 +293,6 @@ Part data:
 - Every BOM line has an LCSC number, checked against the JLCPCB parts library on 2026-10-07 (part, package, rating, stock). Passives take theirs from `PASSIVES` in `gen/build.py`.
 - JLCPCB basic parts where one exists. Extended lines: RP2354B, AT8833CQ, 3.3 uH inductor, crystal, ESD diode, LDO, AHCT buffer, status LED, polyfuse, USB-C, the JST connectors, and three passives:
   - 2.2 uF VM caps: the only basic 0402 2.2 uF is rated 6.3 V, so a 16 V part is used on the 5 V motor rail.
-  - 0.82 ohm sense resistors (0603, 250 mW): no basic part exists.
   - 27 ohm USB series resistors and the 39 k VMOT_SENSE divider resistor: no basic 0402 part exists.
 - Solder jumpers and test pads are excluded from the BOM and from the placement file (they are copper only).
 
@@ -272,6 +304,6 @@ Open items:
   - RP2354B: about 1.7k in stock.
   - Polyfuse: 1.97k in stock. Ruilon C702823 isn't in JLCPCB's library, so PTTC SMD1812P150TF/8 (C209721) is used.
   - Status LED: the Worldsemi WS2812B-2020 (C965555) had 1 in stock, so the XINGLIGHT XL-2020RGBC-WS2812B (C5349955) is used. It has the same pinout and footprint.
-- Sense resistors: 0603, 250 mW (Viking SR731JTTDR820F, C186570; 2.2k in stock 2026-10-10). Holding a coil at the AT8833 current-limit trip (up to 0.29 A at VTRIP 240 mV) dissipates 69 mW, 28 % of rating. The worst case is VTRIP^2 / R, so a lower R for more current needs R >= 0.29 ohm to keep 20 % margin. Most 0603 0.82 ohm parts are 100 mW (69 %); keep a 250 mW part if this one is substituted.
+- Sense resistors: 1 ohm 0603, 100 mW, JLCPCB basic (UniOhm 0603WAF100KT5E, C22936). The current limit is 0.16-0.24 A (VTRIP 160-240 mV). Holding a coil at the trip dissipates up to VTRIP^2 / R = 58 mW, 58 % of rating. No basic 0.82 ohm part exists; 0.82 ohm (0.2-0.29 A) needs an extended part, and in 0603 a 250 mW one (e.g. Viking SR731JTTDR820F, C186570) since most are 100 mW (69 %).
 - LED PWR (J6) is a JST-PH rated 2 A per pin, which caps a separately powered strip at 2 A unless the connector changes.
 - PCB layout: controller fully routed (0 unconnected; silkscreen labels still to tidy); `single_sh` fully routed (unreviewed); driver and tier-3 boards not started. Routing used Freerouting 2.5.0 plus a small grid router for the last nets; neither is part of the repo.
