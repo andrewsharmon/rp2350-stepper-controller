@@ -258,6 +258,7 @@ Same circuit as `single_sh`, re-made for cheaper fabrication. Started 2026-10-10
   - Each pair: the left (outer-motor) driver takes its B outputs straight down on F.Cu and hops its A outputs over the other driver on In2, to vias just below the connector pads. The right (inner-motor) driver fans all four outputs left on F.Cu in nested L's.
   - LADDER (nFAULT wire-OR): B.Cu drops to a spine under the driver row, one per side. NSLEEP: In2 risers to vias above the cap row; In2 links only join one pair to the next (a link across a pair would cut the In2 V5 pour round the outer driver's caps off from the plane).
   - The four +1V1 MCU pins each drop to a via into the In2 +1V1 area under the chip.
+- Firmware: `-DPICO_BOARD=single_sh_proto`. Bring-up checklist: [`docs/BRINGUP_single_sh_proto.md`](../docs/BRINGUP_single_sh_proto.md).
 - Fabrication: `gen/jlcfab.py single_sh_proto --check` writes `single_sh_proto/jlcpcb/` (142 placements, 36 BOM lines: 21 basic, 15 extended; Economic PCBA; every placement checked against JLCPCB's footprints). Order: 4 layers, 1.6 mm, ENIG, plugged vias, 0.3 mm min via hole.
 
 ## Schematics and BOM
