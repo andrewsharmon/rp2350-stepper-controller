@@ -69,6 +69,10 @@ Requirements:
 cmake -S firmware -B firmware/build -G Ninja
 cmake --build firmware/build
 
+# single_sh_proto prototype board
+cmake -S firmware -B firmware/build-proto -G Ninja -DPICO_BOARD=single_sh_proto
+cmake --build firmware/build-proto
+
 # Raspberry Pi Pico 2 bench setup
 cmake -S firmware -B firmware/build-pico2 -G Ninja -DPICO_BOARD=pico2
 cmake --build firmware/build-pico2

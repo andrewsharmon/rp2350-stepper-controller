@@ -13,7 +13,11 @@
 #define BOARD_CC1_GPIO        40
 #define BOARD_CC2_GPIO        41
 #define BOARD_VMOT_GPIO       42
+#ifdef BOARD_SINGLE_SH_PROTO
+#define BOARD_VMOT_RATIO      4.9f   // 39k / 10k divider
+#else
 #define BOARD_VMOT_RATIO      5.0f   // 1:5 divider
+#endif
 #define BOARD_ID_GPIO         43
 #define BOARD_LADDER_GPIO     44
 #define BOARD_WS2812_GPIO     45

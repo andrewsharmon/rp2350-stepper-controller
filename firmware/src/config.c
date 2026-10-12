@@ -19,6 +19,12 @@ void config_defaults(config_t *c) {
             .amp_low = 0.40f, .amp_high = 0.60f, .amp_hold = 0.25f,
             .low_speed = 300.0f, .high_speed = 1600.0f, .flags = 0,
         };
+#ifdef BOARD_NESTED_MOTOR_PAIRS
+        // Nested dual-motor connectors: the odd motor (M1, M3, ...) sits on the
+        // inner pins with its coils swapped and coil A reversed.
+        if (i % 2 == 0)
+            a->drive.flags = CONFIG_FLAG_SWAP_COILS | CONFIG_FLAG_REVERSE;
+#endif
     }
     c->hold_delay_ms = 500;
     c->boot_show = 0xff;

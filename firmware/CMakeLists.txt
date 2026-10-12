@@ -1,7 +1,8 @@
 cmake_minimum_required(VERSION 3.13)
 
 # Default to the custom stack board; override with -DPICO_BOARD=pico2 for
-# bring-up on a Pico 2 (RP2350A: motors 1-5 on pins, see src/board_pins.h).
+# bring-up on a Pico 2 (RP2350A: motors 1-5 on pins, see src/board_pins.h),
+# or -DPICO_BOARD=single_sh_proto for the prototype single board.
 set(PICO_BOARD_HEADER_DIRS ${CMAKE_CURRENT_LIST_DIR}/boards)
 set(PICO_BOARD rp2354b_stepper CACHE STRING "Board type")
 set(PICO_PLATFORM rp2350-arm-s CACHE STRING "Platform")
@@ -43,6 +44,10 @@ pico_generate_pio_header(stepper ${CMAKE_CURRENT_LIST_DIR}/src/ws2812.pio)
 
 set(NUM_MOTORS 10 CACHE STRING "Number of motors driven (1-10)")
 target_compile_definitions(stepper PRIVATE NUM_MOTORS=${NUM_MOTORS})
+# single_sh_proto wires each motor pair to the nested cable pinout.
+if(PICO_BOARD STREQUAL "single_sh_proto")
+    target_compile_definitions(stepper PRIVATE BOARD_NESTED_MOTOR_PAIRS)
+endif()
 # Core 0 runs deep call chains (binary protocol -> config / cam save -> flash).
 # 4 KB fills SCRATCH_Y; the stack guards turn any overflow into a fault (the
 # watchdog then cuts the outputs) instead of silent memory corruption.
