@@ -231,6 +231,8 @@ Controller, driver and the `io_sh` connectors on one PCB, from the `single_sh/` 
 
 Same circuit as `single_sh`, re-made for cheaper fabrication. Started 2026-10-10. Fully routed, DRC and schematic parity clean, and JLCDFM shows no "danger" items (2026-10-11; re-check after the 5050 LED change); unreviewed.
 
+Bring-up (2026-10-21, board 1): boots, flashes over USB and runs the firmware; status readings, nested-pinout config, status LED and buttons check out. Motors not tested yet. Results in [`docs/BRINGUP_single_sh_proto.md`](../docs/BRINGUP_single_sh_proto.md#record).
+
 - Every passive is 0603 and a JLCPCB basic part (`PASSIVES` in `gen/build.py`, applied by `single(..., proto=True)`).
   - 10 uF bulk caps go 0805 -> 0603 (10 V X5R, C19702) on the 5 V rail.
   - USB series resistors are 22 ohm (C23345): 27 ohm 0603 is extended.

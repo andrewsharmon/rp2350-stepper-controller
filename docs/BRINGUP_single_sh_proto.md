@@ -116,3 +116,22 @@ Power from USB, or from the bench supply at 5 V with a **1 A limit**. Start on J
 ## Record
 
 For each board: serial/date, idle currents (step 1 and 2), 1V1 ripple, vmot error, ladder levels, any coil/direction changes, max reliable speed at 60 %, issues. Put fixes into the next revision's notes in `hardware/README.md`.
+
+### Board 1 (USB serial 9E6A370B4D94ADC7), 2026-10-21
+
+- Step 2: came up in BOOTSEL as `RP2350` (UF2 Bootloader v1.1). Flashed by copying `stepper.uf2` to the drive (the SDK-built picotool has no USB support, so `picotool info -a` and the 2 MB flash check weren't run). Enumerates as `/dev/tty.usbmodem12401`.
+- Step 3 (`?` on USB):
+
+  | Field | Read |
+  |---|---|
+  | ladder | 2196 mV, `idle` |
+  | vmot | 4792 mV; TP8 on the meter 4.813 V (-0.4 %, `BOARD_VMOT_RATIO` 4.9 kept) |
+  | board id | 1055 mV |
+  | cc | 508 / 44 mV (default USB) |
+  | motors | `10 motors (10 with pins)`, core busy 0.0 %, ring low-water 59/63 |
+  | state | `running`, config defaults |
+
+  `cfg` shows `rev ba` on axes 1, 3, 5, 7, 9 and `fwd ab` on the even axes. `X` reboots and the port is back in 2.6 s.
+- Step 4: D2 shows blue. LED strip and TP16 not checked yet.
+- Step 5: SW1/SW2 presses report in the CLI (levels not recorded). Hold-to-stop, e-stop and nFAULT checks not done yet.
+- Not yet recorded: steps 0-1 (resistances, bench-supply idle current, rail voltages, 1V1 ripple), steps 6-8.
