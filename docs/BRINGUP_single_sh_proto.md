@@ -98,7 +98,7 @@ Power from USB, or from the bench supply at 5 V with a **1 A limit**. Start on J
 - [ ] `amp 30` (fixed 30 %), then `v 2 100`: M2 (outer pins) turns smoothly. `s`.
 - [ ] `v 1 100`: M1 (inner pins) turns smoothly in the **same direction** as M2. If it buzzes without turning, the coil swap is wrong: try `coils 1 ab`. If it turns backwards: `dir 1 fwd`. Note any change here, so the defaults in `config.c` can be fixed.
 - [ ] `amp auto`, then `m 1,2 2000` and `m 1,2 0`: both return to the same place without missing steps.
-- [ ] Supply current with two motors at hold (~25 %), then running at 60 %. Driver and sense resistors only warm.
+- [ ] Supply current with two motors at hold (~25 %), then running at 48 % (the default high amplitude). Driver and sense resistors only warm.
 - [ ] Repeat for J12-J15 (M3-M10).
 - [ ] With all ten connected: `stress on` for 10 minutes on the bench supply. Watch V5 sag in `?` (vmot), driver temperatures, the core busy figures, and that no underrun or fault events appear (`te on`). `stress off`.
 - [ ] Re-measure the speed and amplitude limits on this board's V5 (bench notes: 60 % with a 2000 steps/s^2 ramp held 1919 full steps/s on the Pico 2). Update the `config_defaults` vmax if it differs.
@@ -116,7 +116,7 @@ Power from USB, or from the bench supply at 5 V with a **1 A limit**. Start on J
 
 ## Record
 
-For each board: serial/date, idle currents (step 1 and 2), 1V1 ripple, vmot error, ladder levels, any coil/direction changes, max reliable speed at 60 %, issues. Put fixes into the next revision's notes in `hardware/README.md`.
+For each board: serial/date, idle currents (step 1 and 2), 1V1 ripple, vmot error, ladder levels, any coil/direction changes, max reliable speed at 48 %, issues. Put fixes into the next revision's notes in `hardware/README.md`.
 
 ### Board 1 (USB serial 9E6A370B4D94ADC7), 2026-10-21
 
