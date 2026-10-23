@@ -11,6 +11,7 @@
 #include "control.h"
 #include "microstep.h"
 #include "player.h"
+#include "programs.h"
 #include "protocol.h"
 #include "show_store.h"
 #include "cam_store.h"
@@ -67,7 +68,8 @@ static const char help_text[] =
     "  dir <ax> fwd|rev      reverse rotation      coils <ax> ab|ba  swap coils\n"
     "  cfg                   show the configuration    save  write it (and cam tables) to flash\n"
     "  show list | run <n> | stop   shows in flash slots 1-4 (upload with stepperctl)\n"
-    "  boot <n>|off          show to run at power-up (save to keep it)\n"
+    "  prog list | <n> | stop   built-in programs 1-12 (Btn2 steps through them, then the shows)\n"
+    "  boot <n>|p<n>|off     show n, or program n, to run at power-up (save to keep it)\n"
     "  defaults              restore defaults (until saved)\n"
     "  t <hz>                telemetry lines per second (0 = off, max 1000)\n"
     "  ta <ax>               telemetry axes (default *)\n"
@@ -221,6 +223,9 @@ static void print_config(void) {
     }
     if (saved->boot_show < SHOW_SLOTS)
         printf("  boot show: %u\n", saved->boot_show + 1);
+    else if (saved->boot_show >= CONFIG_BOOT_PROGRAM && saved->boot_show - CONFIG_BOOT_PROGRAM < PROGRAM_COUNT)
+        printf("  boot program: %u (%s)\n", saved->boot_show - CONFIG_BOOT_PROGRAM + 1,
+               programs[saved->boot_show - CONFIG_BOOT_PROGRAM].name);
     printf("  cam tables saved:");
     bool any = false;
     for (uint32_t k = 0; k < CAM_TABLES; k++) {
@@ -477,11 +482,28 @@ static void run_line(char *buf) {
         } else {
             goto usage;
         }
+    } else if (strcmp(cmd, "prog") == 0 && argc == 2) {
+        if (strcmp(argv[1], "list") == 0) {
+            for (int k = 0; k < PROGRAM_COUNT; k++) {
+                const program_t *p = &programs[k];
+                printf("  %2d: %-13s %2.0f s loop, peak %4.0f steps/s, %4.0f steps/s^2%s\n", k + 1, p->name,
+                       p->period_s, (double)p->vpeak, (double)p->apeak,
+                       player_program() == k ? "  (running)" : "");
+            }
+        } else if (strcmp(argv[1], "stop") == 0) {
+            app_stop_playing();
+        } else {
+            const char *err = app_start_program((int)strtol(argv[1], NULL, 10) - 1);
+            if (err)
+                printf("program not started: %s\n", err);
+        }
     } else if (strcmp(cmd, "boot") == 0 && argc == 2) {
-        long k = strtol(argv[1], NULL, 10);
+        long k = strtol(argv[1][0] == 'p' ? argv[1] + 1 : argv[1], NULL, 10);
         if (strcmp(argv[1], "off") == 0)
             app_set_boot_show(-1);
-        else if (k >= 1 && k <= SHOW_SLOTS)
+        else if (argv[1][0] == 'p' && k >= 1 && k <= PROGRAM_COUNT)
+            app_set_boot_program((int)k - 1);
+        else if (argv[1][0] != 'p' && k >= 1 && k <= SHOW_SLOTS)
             app_set_boot_show((int)k - 1);
         else
             goto usage;

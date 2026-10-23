@@ -261,7 +261,7 @@ static void send_show_info(uint16_t seq) {
 static bool flash_write_ok(void) {
     static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
-    return player_slot() < 0 && (!control_outputs_on || s.settled_mask == CONTROL_ALL_AXES);
+    return player_slot() < 0 && player_program() < 0 && (!control_outputs_on || s.settled_mask == CONTROL_ALL_AXES);
 }
 
 static bool store(uint32_t slot, const uint8_t *data, uint32_t len) {

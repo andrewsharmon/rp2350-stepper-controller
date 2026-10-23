@@ -1,9 +1,11 @@
 #pragma once
 
-// Show player (core 0). Running a show: the show's axes move to their first
-// keyframe, then start together; each axis's keyframes are streamed to its
-// PVT queue as it drains, and LED tracks override their pixels. Stops on
-// player_stop, an e-stop, or the end of a non-looping show.
+// Show player (core 0). Plays stored shows and the built-in programs
+// (programs.h), which it treats as looping shows with a track per axis.
+// Running a show: the show's axes move to their first keyframe, then start
+// together; each axis's keyframes are streamed to its PVT queue as it
+// drains, and LED tracks override their pixels. Stops on player_stop, an
+// e-stop, or the end of a non-looping show.
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -11,11 +13,14 @@
 // Start the show in a slot. Returns NULL, or why it can't run (empty slot,
 // invalid show, an axis busy or grouped, a segment over the axis limits).
 const char *player_start(uint32_t slot);
+// Start built-in program k (every axis), like a show.
+const char *player_start_program(uint32_t k);
 void player_stop(void);
 void player_poll(uint32_t now_us);
 
-// -1 when idle.
+// The show slot / program playing; -1 when none.
 int player_slot(void);
+int player_program(void);
 const char *player_state(void);   // "idle", "moving to start", "running"
 
 // LED override for pixel `px` while a show runs; false if the show doesn't
