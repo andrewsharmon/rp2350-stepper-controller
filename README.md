@@ -50,6 +50,7 @@ tools/stepperctl/    host library + command line (binary protocol)
 tools/shows/         example shows (JSON; format in tools/stepperctl/show.py)
 tools/cams/          example cam tables (JSON: {"cyclic": true, "points": [[x, y], ...]})
 tools/pvt_demo.py    host demo: streams a PVT wave over USB serial
+tools/web/           browser control page (Web Serial, binary protocol)
 firmware/            Pico SDK (C) firmware
   src/               motor PWM (PIO/DMA), microstepping, ADC monitor, ladder, LEDs
   boards/            board header for the custom RP2354B controller
@@ -166,6 +167,17 @@ with Client() as c:
 
 Command-line tool tests (no hardware needed):
 `python3 -m unittest discover -s tools/stepperctl -p 'test_*.py' -t tools`
+
+### Browser control page
+
+[tools/web/index.html](tools/web/index.html) drives the actuators from Chrome
+or Edge over Web Serial: open the file directly (file:// works) and click
+Connect. Each axis gets a position slider (drag to move), hold-to-jog
+buttons, →0, Zero and Stop, with live position, speed and amplitude; there
+are also an all-axes row, STOP ALL (or Esc), clear stop, manual or automatic
+amplitude, speed and acceleration limits, the 12 built-in programs, and the
+text console. It speaks the binary protocol on the same USB serial port, so
+close any other program that has the port open first.
 
 ### I²C (Qwiic) — untested
 

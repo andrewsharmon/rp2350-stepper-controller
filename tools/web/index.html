@@ -1,0 +1,651 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Stepper Control</title>
+<!--
+  Web Serial control page for the stepper controller's linear actuators.
+  Speaks the binary protocol (firmware/src/protocol.h, framing in frame.h)
+  over the USB serial port, alongside the text console. Open it in Chrome or
+  Edge, from file:// or localhost (Web Serial needs a secure context).
+-->
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --border: #dde1e6; --text: #1b1f24; --muted: #66707a;
+  --accent: #2563eb; --accent-text: #ffffff; --track: #e6e9ee; --target: #93b4f5;
+  --ok: #15803d; --warn: #b45309; --bad: #dc2626; --bad-text: #ffffff;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111418; --panel: #191d23; --border: #2b3139; --text: #e6e9ee; --muted: #8b95a1;
+    --accent: #3b82f6; --track: #262c34; --target: #2f4f8f;
+    --ok: #22c55e; --warn: #f59e0b; --bad: #ef4444;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111418; --panel: #191d23; --border: #2b3139; --text: #e6e9ee; --muted: #8b95a1;
+  --accent: #3b82f6; --track: #262c34; --target: #2f4f8f;
+  --ok: #22c55e; --warn: #f59e0b; --bad: #ef4444;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1100px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.spacer { flex: 1; }
+button {
+  font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+button.stop { background: var(--bad); border-color: var(--bad); color: var(--bad-text); font-weight: 600; padding: 8px 18px; }
+input[type=number], input[type=text] {
+  font: inherit; padding: 5px 8px; border-radius: 6px; width: 90px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+}
+label { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.pill { font-weight: 600; padding: 2px 10px; border-radius: 999px; border: 1px solid currentColor; }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); } .pill.off { color: var(--muted); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+
+/* axes */
+.axes { display: grid; gap: 6px; }
+.axis {
+  display: grid; align-items: center; gap: 10px;
+  grid-template-columns: 34px minmax(160px, 1fr) 190px auto;
+}
+.axis .name { font-weight: 600; }
+.axis.all { border-top: 1px solid var(--border); padding-top: 8px; margin-top: 2px; }
+.track { position: relative; height: 28px; }
+.track .bar { position: absolute; left: 0; right: 0; top: 11px; height: 6px; border-radius: 3px; background: var(--track); }
+.track .mid { position: absolute; left: 50%; top: 6px; width: 1px; height: 16px; background: var(--border); }
+.track .pos {
+  position: absolute; top: 4px; width: 4px; height: 20px; margin-left: -2px; border-radius: 2px;
+  background: var(--accent); pointer-events: none;
+}
+.track input[type=range] {
+  position: absolute; inset: 0; width: 100%; margin: 0; background: transparent;
+  -webkit-appearance: none; appearance: none;
+}
+.track input[type=range]::-webkit-slider-runnable-track { height: 28px; background: transparent; }
+.track input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 14px; height: 14px; margin-top: 7px; border-radius: 50%;
+  background: var(--target); border: 2px solid var(--accent); cursor: grab;
+}
+.track input[type=range]::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%; background: var(--target); border: 2px solid var(--accent);
+}
+.readout { font-size: 12px; display: grid; grid-template-columns: 1fr 1fr; column-gap: 8px; }
+.readout b { font-weight: 600; font-size: 14px; }
+.btns { display: flex; gap: 4px; }
+.btns button { padding: 4px 9px; }
+
+/* programs */
+.progs { display: grid; grid-template-columns: repeat(auto-fill, minmax(110px, 1fr)); gap: 6px; }
+
+/* console */
+#log {
+  font-family: var(--mono); font-size: 12px; height: 180px; overflow-y: auto; white-space: pre-wrap;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 0 0 8px;
+}
+#cmd { flex: 1; width: auto; font-family: var(--mono); }
+#unsupported { display: none; color: var(--bad); font-weight: 600; }
+
+@media (max-width: 720px) {
+  .axis { grid-template-columns: 30px 1fr; }
+  .axis .readout, .axis .btns { grid-column: 2; }
+}
+</style>
+</head>
+<body>
+<main>
+  <div class="panel row">
+    <h1>Stepper Control</h1>
+    <span id="conn" class="pill off">disconnected</span>
+    <span id="fw" class="muted mono"></span>
+    <span class="spacer"></span>
+    <span id="unsupported">Web Serial isn't available: use Chrome or Edge on desktop.</span>
+    <button id="connect" class="primary">Connect</button>
+  </div>
+
+  <div class="panel row">
+    <span id="outputs" class="pill off">outputs —</span>
+    <span class="muted">Vmot <span id="vmot" class="mono">—</span></span>
+    <button id="clear" disabled>Clear stop</button>
+    <span class="spacer"></span>
+    <label>Amplitude
+      <select id="ampMode" disabled>
+        <option value="auto">auto</option>
+        <option value="manual">manual</option>
+      </select>
+    </label>
+    <input id="amp" type="range" min="0" max="60" value="40" disabled style="width:120px">
+    <span id="ampVal" class="mono muted" style="width:3.5em">auto</span>
+    <button id="stopAll" class="stop" disabled>STOP ALL</button>
+  </div>
+
+  <div class="panel">
+    <div class="row" style="margin-bottom:8px">
+      <h2 style="margin:0">Axes</h2>
+      <span class="spacer"></span>
+      <label>Stroke ± <input id="stroke" type="number" min="10" step="10" value="1370"></label>
+      <label>Jog speed <input id="jogSpeed" type="number" min="1" step="50" value="600"></label>
+      <label>Max speed <input id="vmax" type="number" min="1" step="100" value="1500"></label>
+      <label>Accel <input id="amax" type="number" min="1" step="100" value="2000"></label>
+      <button id="limits" disabled title="Send max speed and acceleration to every axis">Apply limits</button>
+    </div>
+    <div id="axes" class="axes"><p class="muted">Connect to the board to see its axes.</p></div>
+    <p class="muted" style="margin:8px 0 0;font-size:12px">
+      Drag a slider to move an axis there; hold ◀ ▶ to jog. Positions are full steps; 0 is the power-up position.
+      Zero redefines the current position as 0 (the axis must be at rest).
+    </p>
+  </div>
+
+  <div class="panel">
+    <div class="row" style="margin-bottom:8px">
+      <h2 style="margin:0">Programs</h2>
+      <span class="spacer"></span>
+      <span id="progState" class="muted"></span>
+      <button id="progStop" disabled>Stop program</button>
+    </div>
+    <div id="progs" class="progs"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Console</h2>
+    <pre id="log"></pre>
+    <form id="cmdForm" class="row">
+      <input id="cmd" type="text" placeholder="console command, e.g. help, ?, prog list" autocomplete="off" disabled>
+      <button id="send" disabled>Send</button>
+    </form>
+  </div>
+</main>
+
+<script>
+'use strict';
+
+// ---- protocol constants (firmware/src/protocol.h) ---------------------------
+const T = {
+  PING: 0x01, STATUS_REQ: 0x02,
+  MOVE: 0x10, MOVE_REL: 0x11, VELOCITY: 0x12, JOG: 0x13, STOP: 0x14, SET_POS: 0x15, LIMITS: 0x16,
+  AMPLITUDE: 0x30, CLEAR_STOP: 0x31,
+  ACK: 0x80, PONG: 0x81, STATUS: 0x82, TELEM: 0x90, EVENT: 0x91,
+};
+const RESULT = ['OK', 'QUEUE_FULL', 'BAD_REQUEST', 'UNKNOWN'];
+const MODES = ['idle', 'position', 'velocity', 'jog', 'pvt', 'group', 'cam'];
+const UNITS = 2 ** 30;   // positions: int64 in 2^-30 full step
+const PROGRAMS = ['breathe', 'travel', 'standing', 'ripple', 'seesaw', 'zipper',
+                  'domino', 'stairs', 'scan', 'chase', 'interference', 'drift'];
+const JOG_TIMEOUT_MS = 300, JOG_REPEAT_MS = 100, STATUS_MS = 80, REPLY_TIMEOUT_MS = 500;
+
+// ---- framing (firmware/src/frame.h): 0x00, COBS(type, seq, payload, crc16), 0x00
+function crc16(bytes) {
+  let crc = 0xffff;
+  for (const b of bytes) {
+    crc ^= b << 8;
+    for (let k = 0; k < 8; k++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+  }
+  return crc;
+}
+
+function cobsEncode(input) {
+  const out = [0];
+  let codeAt = 0, code = 1;
+  for (let i = 0; i < input.length; i++) {
+    if (input[i] === 0) {
+      out[codeAt] = code; codeAt = out.length; out.push(0); code = 1;
+      continue;
+    }
+    out.push(input[i]);
+    if (++code === 0xff) {
+      out[codeAt] = code;
+      if (i + 1 === input.length) return out;
+      codeAt = out.length; out.push(0); code = 1;
+    }
+  }
+  out[codeAt] = code;
+  return out;
+}
+
+function cobsDecode(input) {
+  const out = [];
+  let i = 0;
+  while (i < input.length) {
+    const code = input[i++];
+    if (code === 0) return null;
+    for (let k = 1; k < code; k++) {
+      if (i >= input.length || input[i] === 0) return null;
+      out.push(input[i++]);
+    }
+    if (code !== 0xff && i < input.length) out.push(0);
+  }
+  return out;
+}
+
+function buildFrame(type, seq, payload) {
+  const raw = [type, seq & 0xff, seq >> 8, ...payload];
+  const crc = crc16(raw);
+  raw.push(crc & 0xff, crc >> 8);
+  return new Uint8Array([0, ...cobsEncode(raw), 0]);
+}
+
+function parseFrame(bytes) {
+  const raw = cobsDecode(bytes);
+  if (!raw || raw.length < 5) return null;
+  const n = raw.length;
+  if (crc16(raw.slice(0, n - 2)) !== (raw[n - 2] | raw[n - 1] << 8)) return null;
+  return { type: raw[0], seq: raw[1] | raw[2] << 8, payload: new Uint8Array(raw.slice(3, n - 2)) };
+}
+
+// Little-endian payload writer.
+class W {
+  constructor() { this.b = []; }
+  u8(v) { this.b.push(v & 0xff); return this; }
+  u16(v) { this.b.push(v & 0xff, (v >> 8) & 0xff); return this; }
+  f32(v) { const d = new DataView(new ArrayBuffer(4)); d.setFloat32(0, v, true); this.b.push(...new Uint8Array(d.buffer)); return this; }
+  i64(v) { const d = new DataView(new ArrayBuffer(8)); d.setBigInt64(0, BigInt(v), true); this.b.push(...new Uint8Array(d.buffer)); return this; }
+  steps(s) { return this.i64(Math.round(s * UNITS)); }
+}
+
+// ---- connection --------------------------------------------------------------
+let port = null, writer = null, reader = null, readDone = Promise.resolve();
+let writeChain = Promise.resolve();
+let seq = 0;
+const pending = new Map();   // seq -> {resolve, reject, timer}
+let info = null;             // from PONG
+let pollTimer = null, statusInFlight = false;
+
+function write(bytes) {
+  writeChain = writeChain.then(() => writer && writer.write(bytes)).catch(e => logLine(`write failed: ${e.message}`));
+  return writeChain;
+}
+
+// Send a request; resolves with the reply {type, payload}. ACKs other than
+// OK reject.
+function request(type, w = new W()) {
+  if (!writer) return Promise.reject(new Error('not connected'));
+  seq = (seq + 1) & 0xffff || 1;
+  const s = seq;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { pending.delete(s); reject(new Error('no reply')); }, REPLY_TIMEOUT_MS);
+    pending.set(s, { resolve, reject, timer, type });
+    write(buildFrame(type, s, w.b));
+  });
+}
+
+// Fire-and-report: commands from the UI log their refusals.
+function command(type, w, what) {
+  return request(type, w).catch(e => logLine(`${what}: ${e.message}`));
+}
+
+function sendText(line) {
+  write(new TextEncoder().encode(line + '\n'));
+}
+
+function onReply(f) {
+  const p = pending.get(f.seq);
+  if (!p) return;
+  pending.delete(f.seq);
+  clearTimeout(p.timer);
+  if (f.type === T.ACK) {
+    const result = f.payload[1];
+    if (result !== 0) { p.reject(new Error(RESULT[result] || `result ${result}`)); return; }
+  }
+  p.resolve(f);
+}
+
+// Byte demux: frames between zeros, everything else is console text. A
+// "frame" that fails to parse is taken to be a resync (its closing zero was
+// really an opening one), so a stream joined mid-frame recovers.
+const rx = { inFrame: false, buf: [] };
+const textDecoder = new TextDecoder();
+function onBytes(chunk) {
+  let textStart = -1;
+  const flushText = end => {
+    if (textStart >= 0) { logText(textDecoder.decode(chunk.subarray(textStart, end), { stream: true })); textStart = -1; }
+  };
+  for (let i = 0; i < chunk.length; i++) {
+    const c = chunk[i];
+    if (c === 0) {
+      flushText(i);
+      if (rx.inFrame && rx.buf.length) {
+        const f = parseFrame(rx.buf);
+        if (f) { rx.inFrame = false; if (f.type !== T.TELEM && f.type !== T.EVENT) onReply(f); }
+      } else {
+        rx.inFrame = true;
+      }
+      rx.buf = [];
+    } else if (rx.inFrame) {
+      if (rx.buf.length < 600) rx.buf.push(c); else { rx.inFrame = false; rx.buf = []; }
+    } else if (textStart < 0) {
+      textStart = i;
+    }
+  }
+  flushText(chunk.length);
+}
+
+async function readLoop() {
+  while (port && port.readable) {
+    reader = port.readable.getReader();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) onBytes(value);
+      }
+    } catch (e) {
+      logLine(`read: ${e.message}`);
+    } finally {
+      reader.releaseLock();
+      reader = null;
+    }
+    if (!writer) break;
+  }
+  if (writer) disconnect('port closed');
+}
+
+async function connect() {
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200 });
+  } catch (e) {
+    port = null;
+    if (e.name !== 'NotFoundError') logLine(`connect: ${e.message}`);
+    return;
+  }
+  writer = port.writable.getWriter();
+  rx.inFrame = false; rx.buf = [];
+  readDone = readLoop();
+  setConn('warn', 'connecting…');
+  try {
+    let pong = null;
+    for (let k = 0; k < 3 && !pong; k++) pong = await request(T.PING).catch(() => null);
+    if (!pong || pong.type !== T.PONG) throw new Error('no reply to ping: is this the stepper board?');
+    const d = new DataView(pong.payload.buffer);
+    info = {
+      version: d.getUint8(0), axes: d.getUint8(1), groups: d.getUint8(2),
+      tickHz: d.getUint16(3, true), pwmHz: d.getUint16(5, true),
+      name: new TextDecoder().decode(pong.payload.subarray(8)),
+    };
+  } catch (e) {
+    logLine(e.message);
+    await disconnect();
+    return;
+  }
+  setConn('ok', 'connected');
+  $('fw').textContent = `${info.name} · protocol v${info.version} · ${info.axes} axes`;
+  buildAxes(info.axes);
+  setEnabled(true);
+  pollTimer = setInterval(pollStatus, STATUS_MS);
+}
+
+async function disconnect(why) {
+  if (!port) return;
+  clearInterval(pollTimer); pollTimer = null;
+  stopAllJogs(false);
+  for (const p of pending.values()) { clearTimeout(p.timer); p.reject(new Error('disconnected')); }
+  pending.clear();
+  const w = writer, p = port;
+  writer = null; port = null; info = null;
+  try { if (reader) await reader.cancel(); } catch (e) {}
+  await readDone;   // the read loop releases its lock before the port can close
+  try { if (w) { await writeChain; w.releaseLock(); } } catch (e) {}
+  try { if (p) await p.close(); } catch (e) {}
+  setConn('off', why || 'disconnected');
+  $('fw').textContent = '';
+  setEnabled(false);
+  showOutputs(null);
+}
+
+// ---- status ------------------------------------------------------------------
+async function pollStatus() {
+  if (statusInFlight || !writer) return;
+  statusInFlight = true;
+  try {
+    const f = await request(T.STATUS_REQ);
+    if (f.type === T.STATUS) showStatus(f.payload);
+  } catch (e) {
+    // a dropped poll is fine; the next one retries
+  } finally {
+    statusInFlight = false;
+  }
+}
+
+function showStatus(p) {
+  const d = new DataView(p.buffer, p.byteOffset, p.byteLength);
+  const flags = d.getUint8(4);
+  showOutputs(flags);
+  $('vmot').textContent = (d.getUint16(17, true) / 1000).toFixed(2) + ' V';
+  const stroke = strokeSteps();
+  let busy = false;
+  for (let i = 0; i < info.axes; i++) {
+    const o = 21 + i * 17;
+    if (o + 17 > p.length) break;
+    const pos = Number(d.getBigInt64(o, true)) / UNITS;
+    const vel = d.getFloat32(o + 8, true);
+    const mode = d.getUint8(o + 12), amp = d.getUint8(o + 13), af = d.getUint8(o + 14);
+    const a = axisEls[i];
+    if (mode === 4) busy = true;
+    a.pos.textContent = pos.toFixed(0);
+    a.vel.textContent = vel.toFixed(0);
+    a.amp.textContent = amp + '%';
+    a.mode.textContent = MODES[mode] || mode;
+    a.mode.title = af & 2 ? 'settled' : '';
+    a.marker.style.left = (50 + 50 * clamp(pos / stroke, -1, 1)) + '%';
+    // The thumb holds a sent target until that move is done, then follows.
+    const holding = a.sentAt && (mode === 1 || performance.now() - a.sentAt < 400);
+    if (!a.dragging && !holding) {
+      a.slider.value = clamp(pos, -stroke, stroke);
+      a.sentAt = 0;
+    }
+  }
+  $('progState').textContent = busy ? 'a program or show is streaming' : '';
+}
+
+function showOutputs(flags) {
+  const el = $('outputs');
+  if (flags === null) { el.className = 'pill off'; el.textContent = 'outputs —'; $('vmot').textContent = '—'; return; }
+  if (flags & 1) { el.className = 'pill ok'; el.textContent = 'outputs on'; }
+  else if (flags & 2) { el.className = 'pill bad'; el.textContent = 'E-STOP'; }
+  else if (flags & 4) { el.className = 'pill bad'; el.textContent = 'driver fault'; }
+  else { el.className = 'pill warn'; el.textContent = 'stopped'; }
+}
+
+// ---- axes UI -----------------------------------------------------------------
+const axisEls = [];
+let allMask = 0;
+
+function buildAxes(n) {
+  const box = $('axes');
+  box.innerHTML = '';
+  axisEls.length = 0;
+  allMask = (1 << n) - 1;
+  for (let i = 0; i < n; i++) axisEls.push(axisRow(box, `A${i + 1}`, 1 << i, true));
+  axisRow(box, 'All', allMask, false).row.classList.add('all');
+  applyStroke();
+}
+
+function axisRow(box, label, mask, readout) {
+  const row = el('div', 'axis');
+  const name = el('div', 'name', label);
+  const track = el('div', 'track');
+  track.append(el('div', 'bar'), el('div', 'mid'));
+  const marker = el('div', 'pos');
+  if (readout) track.append(marker);
+  const slider = el('input');
+  slider.type = 'range'; slider.step = '1'; slider.value = '0';
+  slider.title = readout ? 'Drag to move this axis' : 'Drag to move every axis';
+  track.append(slider);
+
+  const ro = el('div', 'readout mono');
+  const pos = el('b', '', '—'), vel = el('span', '', '—'), amp = el('span', '', '—'), mode = el('span', 'muted', '—');
+  if (readout) {
+    ro.append(labelled('pos', pos), labelled('vel', vel), labelled('amp', amp), mode);
+  } else {
+    ro.append(el('span', 'muted', 'moves every axis'));
+  }
+
+  const btns = el('div', 'btns');
+  const left = el('button', '', '◀'), right = el('button', '', '▶');
+  const zero = el('button', '', 'Zero'), go0 = el('button', '', '→0'), stop = el('button', '', 'Stop');
+  left.title = 'Hold to jog negative'; right.title = 'Hold to jog positive';
+  go0.title = 'Move to position 0'; zero.title = 'Set the current position as 0';
+  btns.append(left, right, go0, zero, stop);
+  for (const b of btns.children) b.dataset.needsConn = '1';
+  slider.dataset.needsConn = '1';
+
+  row.append(name, track, ro, btns);
+  box.append(row);
+
+  const a = { row, slider, marker, pos, vel, amp, mode, mask, dragging: false, sentAt: 0 };
+  slider.addEventListener('pointerdown', () => { a.dragging = true; });
+  slider.addEventListener('input', () => { a.dragging = true; });
+  slider.addEventListener('change', () => {
+    a.dragging = false;
+    a.sentAt = performance.now();
+    command(T.MOVE, new W().u16(mask).steps(Number(slider.value)), `${label} move`);
+  });
+  slider.addEventListener('pointerup', () => { a.dragging = false; });
+  holdToJog(left, mask, -1, label);
+  holdToJog(right, mask, +1, label);
+  go0.onclick = () => command(T.MOVE, new W().u16(mask).steps(0), `${label} move`);
+  zero.onclick = () => command(T.SET_POS, new W().u16(mask).steps(0), `${label} zero (axis must be at rest)`);
+  stop.onclick = () => command(T.STOP, new W().u16(mask), `${label} stop`);
+  return a;
+}
+
+// Jog while held: JOG carries a watchdog timeout, so the axis stops on its
+// own if the page goes away; resend it faster than the timeout.
+const jogs = new Set();
+function holdToJog(btn, mask, dir, label) {
+  let timer = null;
+  const send = () => command(T.JOG, new W().u16(mask).f32(dir * jogSpeed()).u16(JOG_TIMEOUT_MS), `${label} jog`);
+  const start = e => {
+    if (timer || btn.disabled) return;
+    btn.setPointerCapture?.(e.pointerId);
+    send();
+    timer = setInterval(send, JOG_REPEAT_MS);
+    jogs.add(end);
+  };
+  const end = (sendStop = true) => {
+    if (!timer) return;
+    clearInterval(timer); timer = null;
+    jogs.delete(end);
+    if (sendStop && writer) command(T.STOP, new W().u16(mask), `${label} stop`);
+  };
+  btn.addEventListener('pointerdown', start);
+  btn.addEventListener('pointerup', () => end());
+  btn.addEventListener('pointercancel', () => end());
+  btn.addEventListener('lostpointercapture', () => end());
+}
+function stopAllJogs(sendStop = true) { for (const end of [...jogs]) end(sendStop); }
+window.addEventListener('blur', () => stopAllJogs());
+
+// ---- controls ----------------------------------------------------------------
+function strokeSteps() { return Math.max(10, Number($('stroke').value) || 1370); }
+function jogSpeed() { return Math.max(1, Number($('jogSpeed').value) || 600); }
+
+function applyStroke() {
+  const s = strokeSteps();
+  for (const input of document.querySelectorAll('.track input[type=range]')) { input.min = -s; input.max = s; }
+  save();
+}
+
+function stopEverything() {
+  stopAllJogs(false);
+  sendText('prog stop');
+  command(T.STOP, new W().u16(allMask), 'stop all');
+}
+
+function sendAmplitude() {
+  const manual = $('ampMode').value === 'manual';
+  $('amp').disabled = !manual || !writer;
+  const v = manual ? Number($('amp').value) / 100 : -1;
+  $('ampVal').textContent = manual ? `${$('amp').value}%` : 'auto';
+  command(T.AMPLITUDE, new W().f32(v), 'amplitude');
+}
+
+function buildPrograms() {
+  const box = $('progs');
+  PROGRAMS.forEach((name, k) => {
+    const b = el('button', '', `${k + 1}. ${name}`);
+    b.dataset.needsConn = '1';
+    b.onclick = () => sendText(`prog ${k + 1}`);
+    box.append(b);
+  });
+}
+
+function setEnabled(on) {
+  for (const e of document.querySelectorAll('[data-needs-conn]')) e.disabled = !on;
+  for (const id of ['clear', 'stopAll', 'ampMode', 'limits', 'progStop', 'cmd', 'send']) $(id).disabled = !on;
+  $('amp').disabled = !on || $('ampMode').value !== 'manual';
+  $('connect').textContent = on ? 'Disconnect' : 'Connect';
+  $('connect').className = on ? '' : 'primary';
+}
+
+function setConn(kind, text) { const c = $('conn'); c.className = `pill ${kind}`; c.textContent = text; }
+
+// ---- console log -------------------------------------------------------------
+const LOG_MAX = 20000;
+function logText(s) {
+  const log = $('log');
+  const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 4;
+  log.textContent = (log.textContent + s.replace(/\r/g, '')).slice(-LOG_MAX);
+  if (atEnd) log.scrollTop = log.scrollHeight;
+}
+function logLine(s) { logText(`\n[page] ${s}\n`); }
+
+// ---- helpers / settings --------------------------------------------------------
+function $(id) { return document.getElementById(id); }
+function el(tag, cls = '', text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+function labelled(name, valueEl) { const s = el('span'); s.append(el('span', 'muted', name + ' '), valueEl); return s; }
+function clamp(x, lo, hi) { return Math.min(hi, Math.max(lo, x)); }
+
+const SETTINGS = ['stroke', 'jogSpeed', 'vmax', 'amax'];
+function save() {
+  try { localStorage.setItem('stepper-control', JSON.stringify(Object.fromEntries(SETTINGS.map(k => [k, $(k).value])))); } catch (e) {}
+}
+function load() {
+  try {
+    const s = JSON.parse(localStorage.getItem('stepper-control') || '{}');
+    for (const k of SETTINGS) if (s[k]) $(k).value = s[k];
+  } catch (e) {}
+}
+
+// ---- wiring ------------------------------------------------------------------
+load();
+buildPrograms();
+setEnabled(false);
+if (!('serial' in navigator)) {
+  $('unsupported').style.display = 'inline';
+  $('connect').disabled = true;
+} else {
+  navigator.serial.addEventListener('disconnect', e => { if (e.target === port) disconnect('board unplugged'); });
+}
+$('connect').onclick = () => (writer ? disconnect() : connect());
+$('stopAll').onclick = stopEverything;
+$('clear').onclick = () => command(T.CLEAR_STOP, new W(), 'clear stop');
+$('ampMode').onchange = sendAmplitude;
+$('amp').oninput = () => { $('ampVal').textContent = `${$('amp').value}%`; };
+$('amp').onchange = sendAmplitude;
+$('stroke').onchange = applyStroke;
+for (const k of ['jogSpeed', 'vmax', 'amax']) $(k).onchange = save;
+$('limits').onclick = () => command(T.LIMITS, new W().u16(allMask).f32(Number($('vmax').value)).f32(Number($('amax').value)), 'limits');
+$('progStop').onclick = () => sendText('prog stop');
+$('cmdForm').onsubmit = e => { e.preventDefault(); const v = $('cmd').value; if (v) { sendText(v); $('cmd').value = ''; } };
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && writer) { e.preventDefault(); stopEverything(); }
+});
+</script>
+</body>
+</html>
