@@ -35,6 +35,7 @@ add_executable(stepper
     src/show.c
     src/show_store.c
     src/player.c
+    src/programs.c
     src/standalone.c
     src/i2c_target.c
 )

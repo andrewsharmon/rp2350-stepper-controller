@@ -86,6 +86,7 @@ Watch the ladder in `?` (or `ts ladder` with `t 10`).
 
 - [ ] Idle (JP4 bridged): ~2.2 V, `idle`.
 - [ ] SW1 Btn1: ~1.3 V, `btn1`. SW2 Btn2: ~0.7 V, `btn2`. Same through J8 PANEL BTN.
+- [ ] Programs (actuators mid-stroke at power-up): Btn2 steps the selection (the LED bar grows by one), Btn1 starts program 1; Btn2 while it runs stops the axes and starts the next. Step through all 12 and back to program 1; Btn1 stops.
 - [ ] Hold a button over 3 s: stop latches; `c` clears it.
 - [ ] E-stop test: cut JP4, fit the NC e-stop on J7. Closed: idle. Pressed or unplugged: 3.3 V, stop latches, outputs off. `c` clears it only after the e-stop is released.
 - [ ] Short TP11 LADDER to GND briefly through 1 k (simulates nFAULT): the stop latches.
@@ -134,4 +135,9 @@ For each board: serial/date, idle currents (step 1 and 2), 1V1 ripple, vmot erro
   `cfg` shows `rev ba` on axes 1, 3, 5, 7, 9 and `fwd ab` on the even axes. `X` reboots and the port is back in 2.6 s.
 - Step 4: D2 shows blue. LED strip and TP16 not checked yet.
 - Step 5: SW1/SW2 presses report in the CLI (levels not recorded). Hold-to-stop, e-stop and nFAULT checks not done yet.
-- Not yet recorded: steps 0-1 (resistances, bench-supply idle current, rail voltages, 1V1 ripple), steps 6-8.
+- Step 6 (2026-10-22, USB power): all ten axes drive linear steppers under `stress on`, two motors (one connector) at a time, on the config defaults with no coil or direction changes. With the stress test on all ten axes, core 1 is ~40 % busy and the ring low-water is 58/63.
+- Step 6, ten motors at once (USB power): all ten linear steppers run together under `stress on`. vmot 4792 mV idle, ~4650 mV holding, 4430-4520 mV running.
+- **Core 0 hang**, ~80 min into a ten-motor stress run: the console stopped answering (USB still enumerated), D2 froze green while the motors sat still and energised. The 1200-baud BOOTSEL reset still worked, so core 0's interrupts were alive and its main loop was stuck. Suspect a core 1 stall that leaves core 0 spinning in `control_snapshot`, which also blocks the core 1 watchdog. Not reproduced or confirmed yet (no SWD probe at the time).
+- Speed (linear steppers, unloaded, USB power, `amp auto`, scurve 30 ms): end-to-end moves over +-1370 full steps, reaching cruise in the first quarter of the stroke, run clean at **6000 full steps/s** (26,000 full steps/s^2). Taken as the practical max for these actuators on these settings; the rotary 8 mm bench limit was 1919. `config_defaults` vmax (1500) left as is.
+- Still to do in step 6: same-direction checks, `m` round trips, supply current, the bench-supply ten-motor run.
+- Not yet recorded: steps 0-1 (resistances, bench-supply idle current, rail voltages, 1V1 ripple), the rest of step 6, steps 7-8.

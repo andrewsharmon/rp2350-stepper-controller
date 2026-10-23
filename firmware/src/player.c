@@ -7,6 +7,7 @@
 
 #include "control.h"
 #include "led.h"
+#include "programs.h"
 #include "show_store.h"
 
 // Keep this many points queued per axis (the PVT queue holds 32), sending
@@ -18,8 +19,10 @@
 typedef enum { IDLE, PREP, RUN } state_t;
 
 static state_t state = IDLE;
-static int slot = -1;
-static show_t show;
+static int slot = -1;              // show slot playing, or -1
+static int program = -1;           // built-in program playing, or -1
+static const program_t *prog;      // what `show` is built from: NULL for a stored show
+static show_t show;                // a program fills in just its axis tracks (looping)
 static uint32_t axis_mask;
 static uint32_t prep_seq;
 static uint32_t t0_us;
@@ -31,17 +34,20 @@ static uint32_t post(control_cmd_t *c) {
     return control_post(c);  // 0 if the queue is full: callers retry next poll
 }
 
-const char *player_start(uint32_t s) {
+static show_point_t point(uint32_t t, uint64_t i) {
+    const show_track_t *tr = &show.track[t];
+    return prog ? program_point(prog, tr->channel, NUM_MOTORS, i) : show_axis_point(&show, tr, i);
+}
+
+static void finish(void) {
+    state = IDLE;
+    slot = program = -1;
+}
+
+// `show` (and `prog`) are set up: check the axes, then move each to its
+// first point.
+static const char *begin(int show_slot, int program_k) {
     static char msg[160];
-    uint32_t len;
-    if (state != IDLE)
-        return "a show is already running";
-    const uint8_t *blob = show_store_blob(s, &len);
-    if (!blob)
-        return "slot is empty";
-    const char *err = show_parse(&show, blob, len, NUM_MOTORS, LED_CHAIN);
-    if (err)
-        return err;
     if (!control_outputs_on)
         return "outputs are stopped (clear first)";
 
@@ -56,11 +62,11 @@ const char *player_start(uint32_t s) {
             return "a show axis is in a group";
     if ((snap.settled_mask & axis_mask) != axis_mask)
         return "show axes must be at rest";
-    err = show_check_limits(&show, snap.vmax, snap.amax, msg, sizeof msg);
+    const char *err = prog ? program_check_limits(prog, NUM_MOTORS, snap.vmax, snap.amax, msg, sizeof msg)
+                           : show_check_limits(&show, snap.vmax, snap.amax, msg, sizeof msg);
     if (err)
         return err;
 
-    // Move each axis to its first keyframe.
     prep_seq = 0;
     for (uint32_t t = 0; t < show.n_tracks; t++) {
         const show_track_t *tr = &show.track[t];
@@ -69,14 +75,44 @@ const char *player_start(uint32_t s) {
         if (tr->type != SHOW_TRACK_AXIS)
             continue;
         control_cmd_t c = {.type = CMD_MOVE, .axes = (uint16_t)(1u << tr->channel),
-                           .pos = motion_steps_to_units(show_axis_key(&show, tr, 0, 0).pos)};
+                           .pos = motion_steps_to_units(point(t, 0).pos)};
         uint32_t seq = post(&c);
         if (seq)
             prep_seq = seq;
     }
-    slot = (int)s;
+    slot = show_slot;
+    program = program_k;
     state = PREP;
     return NULL;
+}
+
+const char *player_start(uint32_t s) {
+    uint32_t len;
+    if (state != IDLE)
+        return "a show is already running";
+    const uint8_t *blob = show_store_blob(s, &len);
+    if (!blob)
+        return "slot is empty";
+    prog = NULL;
+    const char *err = show_parse(&show, blob, len, NUM_MOTORS, LED_CHAIN);
+    if (err)
+        return err;
+    return begin((int)s, -1);
+}
+
+const char *player_start_program(uint32_t k) {
+    if (state != IDLE)
+        return "a show is already running";
+    if (k >= PROGRAM_COUNT)
+        return "no such program";
+    prog = &programs[k];
+    memset(&show, 0, sizeof show);
+    snprintf(show.name, sizeof show.name, "%s", prog->name);
+    show.loop = true;
+    show.n_tracks = NUM_MOTORS;
+    for (uint32_t t = 0; t < show.n_tracks; t++)
+        show.track[t] = (show_track_t){.type = SHOW_TRACK_AXIS, .channel = (uint8_t)t};
+    return begin(-1, (int)k);
 }
 
 void player_stop(void) {
@@ -86,8 +122,7 @@ void player_stop(void) {
         control_cmd_t c = {.type = CMD_STOP, .axes = (uint16_t)axis_mask};
         post(&c);
     }
-    state = IDLE;
-    slot = -1;
+    finish();
 }
 
 // Top up each axis's PVT queue from its keyframes, within the per-poll
@@ -104,7 +139,7 @@ static bool feed(const control_snapshot_t *snap) {
         uint64_t total = show.loop ? UINT64_MAX : show_axis_points(&show, tr);
         uint32_t depth = snap->pvt_depth[tr->channel];
         for (; budget > 0 && depth < TARGET_DEPTH && next_point[t] < total; budget--) {
-            show_point_t pt = show_axis_point(&show, tr, next_point[t]);
+            show_point_t pt = point(t, next_point[t]);
             control_cmd_t c = {.type = CMD_PVT_POINT, .axes = (uint16_t)(1u << tr->channel),
                                .pos = motion_steps_to_units(pt.pos), .f1 = pt.vel,
                                .ms = pt.t_ms - t_prev[t]};
@@ -124,8 +159,7 @@ void player_poll(uint32_t now_us) {
     if (state == IDLE)
         return;
     if (!control_outputs_on) {  // e-stop: the axes are already halted
-        state = IDLE;
-        slot = -1;
+        finish();
         return;
     }
     static control_snapshot_t snap;  // ~1 KB: off core 0's stack
@@ -159,14 +193,16 @@ void player_poll(uint32_t now_us) {
     bool more = feed(&snap);
     uint32_t t_ms = (now_us - t0_us) / 1000;
     if (!show.loop && !more && t_ms > show.duration_ms &&
-        (snap.settled_mask & axis_mask) == axis_mask) {
-        state = IDLE;
-        slot = -1;
-    }
+        (snap.settled_mask & axis_mask) == axis_mask)
+        finish();
 }
 
 int player_slot(void) {
     return slot;
+}
+
+int player_program(void) {
+    return program;
 }
 
 const char *player_state(void) {

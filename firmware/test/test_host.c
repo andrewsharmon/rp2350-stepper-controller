@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c ../src/programs.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -20,6 +20,7 @@
 #include "config.h"
 #include "show.h"
 #include "standalone.h"
+#include "programs.h"
 #include "cam.h"
 #include "cam_store.h"
 #include "trig.h"
@@ -757,6 +758,79 @@ static void test_pvt(void) {
           motion_units_to_steps(ax.pos));
 }
 
+static void test_programs(void) {
+    const int n = 10;
+    float vmax[10], amax[10];
+    for (int i = 0; i < n; i++)
+        vmax[i] = 1500.0f, amax[i] = 2000.0f;  // config defaults
+    for (int k = 0; k < PROGRAM_COUNT; k++) {
+        const program_t *p = &programs[k];
+        char msg[120];
+        CHECK(!program_check_limits(p, n, vmax, amax, msg, sizeof msg), "%s over the default limits",
+              p->name);
+        // Warm-up plus a full period, on the analytic positions.
+        const double h = 1e-3, end = PROGRAM_WARMUP_S + p->period_s;
+        double vpk = 0, apk = 0, ppk = 0, seam = 0;
+        for (int i = 0; i < n; i++) {
+            for (double t = 0; t <= end; t += h) {
+                double a = program_pos(p, i, n, t - h), b = program_pos(p, i, n, t),
+                       c = program_pos(p, i, n, t + h);
+                vpk = fmax(vpk, fabs(c - a) / (2 * h));
+                apk = fmax(apk, fabs(c - 2 * b + a) / (h * h));
+                ppk = fmax(ppk, fabs(b));
+            }
+            // Periodic: one period on, the pattern is back where it was.
+            double t1 = PROGRAM_WARMUP_S + 0.37;
+            seam = fmax(seam, fabs(program_pos(p, i, n, t1 + p->period_s) - program_pos(p, i, n, t1)));
+            show_point_t p0 = program_point(p, i, n, 0);
+            CHECK(p0.t_ms == 0 && fabsf(p0.vel) < 1e-3f && p0.pos == (float)program_pos(p, i, n, 0),
+                  "%s axis %d starts at %f moving %f", p->name, i + 1, (double)p0.pos, (double)p0.vel);
+        }
+        CHECK(vpk <= p->vpeak && apk <= p->apeak, "%s peaks %.0f, %.0f over the declared %.0f, %.0f",
+              p->name, vpk, apk, (double)p->vpeak, (double)p->apeak);
+        CHECK(ppk <= PROGRAM_AMP + 1e-6, "%s reaches %.0f steps", p->name, ppk);
+        CHECK(seam < 1e-6, "%s not periodic (%g steps)", p->name, seam);
+
+        // What an axis actually follows: the PVT stream through motion.c, from
+        // rest at the first point. Every axis's speed and acceleration must
+        // stay within the declared peaks.
+        float mv = 0, ma = 0, merr = 0;
+        for (int i = 0; i < n; i++) {
+            motion_axis_t ax;
+            motion_init(&ax, vmax[i], amax[i]);
+            ax.pos = ax.gen_pos = ax.gen_last = motion_steps_to_units(program_point(p, i, n, 0).pos);
+            uint64_t next = 1;
+            uint32_t t_prev = 0;
+            float v_prev = 0;
+            uint32_t ticks = (uint32_t)(end * 1000.0);
+            for (uint32_t tick = 0; tick < ticks; tick++) {
+                while (ax.pvt_count < 12) {
+                    show_point_t pt = program_point(p, i, n, next++);
+                    motion_pvt_push(&ax, motion_steps_to_units(pt.pos), pt.vel, pt.t_ms - t_prev);
+                    t_prev = pt.t_ms;
+                }
+                if (tick == 0)
+                    CHECK(motion_pvt_start(&ax), "%s: pvt start refused", p->name);
+                motion_tick(&ax);
+                mv = fmaxf(mv, fabsf(ax.vel));
+                ma = fmaxf(ma, fabsf(ax.vel - v_prev) * 1000.0f);
+                v_prev = ax.vel;
+                merr = fmaxf(merr, fabsf(motion_units_to_steps(ax.pos) -
+                                         (float)program_pos(p, i, n, (tick + 1) / 1000.0)));
+            }
+            CHECK(ax.pvt_underruns == 0, "%s axis %d underran", p->name, i + 1);
+        }
+        CHECK(mv <= p->vpeak && ma <= p->apeak, "%s followed at %.0f, %.0f, declared %.0f, %.0f",
+              p->name, (double)mv, (double)ma, (double)p->vpeak, (double)p->apeak);
+        CHECK(merr < 0.5f, "%s tracking error %f steps", p->name, (double)merr);
+    }
+    // Refused on an axis whose limits are too low.
+    char msg[120];
+    amax[4] = 500.0f;
+    CHECK(program_check_limits(&programs[0], n, vmax, amax, msg, sizeof msg) && strstr(msg, "axis 5"),
+          "low amax on axis 5 not caught");
+}
+
 // Run a group to completion on trapezoid axes (no filter, so the path itself
 // is checked). Tracks per-axis speed / acceleration excess and the largest
 // per-tick speed jump.
@@ -1061,6 +1135,7 @@ int main(void) {
     test_trig();
     test_motion();
     test_pvt();
+    test_programs();
     test_group();
     if (failures) {
         printf("%d check(s) failed\n", failures);
