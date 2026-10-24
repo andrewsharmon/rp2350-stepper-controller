@@ -50,8 +50,10 @@ tools/stepperctl/    host library + command line (binary protocol)
 tools/shows/         example shows (JSON; format in tools/stepperctl/show.py)
 tools/cams/          example cam tables (JSON: {"cyclic": true, "points": [[x, y], ...]})
 tools/pvt_demo.py    host demo: streams a PVT wave over USB serial
-tools/web/           browser control page (Web Serial, binary protocol)
+tools/web/           browser pages (Web Serial, binary protocol): index.html actuators,
+                     tof.html ToF sensor 3D viewer and settings
 firmware/            Pico SDK (C) firmware
+  third_party/tmf8829/  ams TMF8829 sensor application image (MIT)
   src/               motor PWM (PIO/DMA), microstepping, ADC monitor, ladder, LEDs
   boards/            board header for the custom RP2354B controller
   test/test_host.c   host-side tests (PWM encoder, microstep math, ladder, motion)
@@ -96,8 +98,34 @@ cd firmware/test
 cc -std=c11 -O1 -Wall -Wextra -DCONFIG_HOST_TEST -I../src test_host.c ../src/hbridge_encode.c \
    ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c \
    ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c \
-   ../src/programs.c -lm -o test_host && ./test_host
+   ../src/programs.c ../src/tof_frame.c -lm -o test_host && ./test_host
 ```
+
+## ToF sensor (LightRanger 14 Click)
+
+A MikroE LightRanger 14 Click (ams TMF8829 multi-zone dToF, 8x8 to 48x32 zones,
+10 mm to 11 m) can hang off the Qwiic port. `tof on` makes I2C1 an I2C host for it
+(the I2C target at 0x42 is off meanwhile; `tof off` gives the port back), downloads
+the sensor's application into its RAM and loads the 8x8 preset. Driver:
+`firmware/src/tmf8829.c`; service and frame streaming: `firmware/src/tof.c`.
+
+Wiring: SDA, SCL, 3V3 and GND from the Qwiic connector. The Click must be set to
+I2C, its EN pin (mikroBUS PWM) held high, and it needs 3V3 (bridge JP1
+QWIIC_SUPPLY, or power it separately). INT isn't needed: the firmware polls.
+
+`tools/web/tof.html` (Chrome or Edge, opened from file://) connects over USB
+serial, switches the sensor on, picks the resolution preset, edits every
+register of the configuration page, and draws each measurement as a 3D point
+cloud (patches, dots or a surface) and a depth map, with PLY/CSV export. Demo
+plays a synthetic scene without a board. From a terminal:
+
+```
+tof on            tof res 16         tof period 100     tof start
+tof ?             tof get            tof set 0x53 10    tof stop / tof off
+```
+
+Not yet run against a real sensor: the register sequences follow ams's reference
+driver, and the page was checked with its synthetic frames only.
 
 ## Pico 2 bench setup
 

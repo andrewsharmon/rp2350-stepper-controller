@@ -3,7 +3,8 @@
 // Core 1 (control.c) runs the 1 kHz trajectory tick for every axis and
 // streams sine-PWM to the PIO state machines through DMA rings. Core 0 (this
 // file) sets everything up, then runs the USB console (console.c), the
-// status LEDs, the stress test and the core 1 watchdog.
+// status LEDs, the stress test, the ToF sensor on the Qwiic port (tof.c)
+// and the core 1 watchdog.
 //
 // Standalone mode (standalone.h): the buttons step through a list of the
 // built-in motion programs (programs.h) followed by the stored shows. Btn1
@@ -30,6 +31,7 @@
 #include "hbridge.h"
 #include "led.h"
 #include "i2c_target.h"
+#include "tof.h"
 #include "player.h"
 #include "programs.h"
 #include "show_store.h"
@@ -310,6 +312,11 @@ void app_print_status(void) {
     if (adc_monitor_present(MON_CC1))
         printf("  cc %lu/%lu mV", (unsigned long)adc_monitor_pin_mv(MON_CC1),
                (unsigned long)adc_monitor_pin_mv(MON_CC2));
+    if (tof_available()) {
+        tof_info_t t;
+        tof_get_info(&t);
+        printf("  tof %s", tof_state_name(t.state));
+    }
 
     double span = last_us ? (double)(now - last_us) : 0.0;
     printf("\n  %d motors (%d with pins), core 0 busy %.1f%%, core 1 busy %.1f%%, ring low-water ",
@@ -497,6 +504,7 @@ int main(void) {
         console_telemetry(now);
         player_poll(now);
         i2c_target_poll();
+        tof_poll(now);
         if (adc_monitor_check())
             printf("ADC FIFO overflow: monitor restarted\n");
 

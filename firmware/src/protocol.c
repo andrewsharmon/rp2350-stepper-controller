@@ -11,6 +11,7 @@
 #include "led.h"
 #include "player.h"
 #include "show_store.h"
+#include "tof.h"
 
 #define FIRMWARE_NAME "rp2350-stepper"
 
@@ -232,6 +233,62 @@ void protocol_send_event(uint32_t tick, uint8_t kind, uint8_t axis, int64_t pos)
     send_telem(PROTO_EVENT, &w);
 }
 
+// --- time of flight ----------------------------------------------------------------
+
+static void send_tof_info(uint16_t seq) {
+    tof_info_t t;
+    tof_get_info(&t);
+    writer_t w = {0};
+    wr_u8(&w, (uint8_t)t.state);
+    wr_u8(&w, (uint8_t)t.error);
+    put(&w, t.app_version, 4);
+    wr_u8(&w, t.chip_id);
+    wr_u8(&w, t.rev_id);
+    wr_u32(&w, t.serial);
+    wr_u16(&w, (uint16_t)t.bus_khz);
+    wr_u8(&w, (uint8_t)(t.clock_correction | t.binary << 1));
+    wr_u8(&w, t.preset);
+    wr_u8(&w, t.download_pct);
+    wr_u32(&w, t.frames);
+    wr_u32(&w, t.bad_frames);
+    wr_u32(&w, t.bus_errors);
+    wr_f32(&w, t.clock_ratio);
+    wr_u32(&w, t.frame_read_us);
+    send(PROTO_TOF_INFO, seq, &w);
+}
+
+static void send_tof_config(uint16_t seq) {
+    tof_info_t t;
+    tof_get_info(&t);
+    writer_t w = {0};
+    wr_u8(&w, t.preset);
+    put(&w, tof_config(), TMF8829_CFG_SIZE);
+    send(PROTO_TOF_CONFIG, seq, &w);
+}
+
+void protocol_send_tof_header(uint32_t host_us, const uint8_t pre_and_header[21], float clock_ratio) {
+    writer_t w = {0};
+    wr_u32(&w, host_us);
+    put(&w, pre_and_header, TMF8829_PRE_HEADER_SIZE + TMF8829_FRAME_HEADER_SIZE);
+    wr_f32(&w, clock_ratio);
+    send_telem(PROTO_TOF_HDR, &w);
+}
+
+void protocol_send_tof_data(uint16_t offset, const uint8_t *data, size_t n) {
+    writer_t w = {0};
+    wr_u16(&w, offset);
+    put(&w, data, (int)n);
+    send_telem(PROTO_TOF_DATA, &w);
+}
+
+void protocol_send_tof_end(uint8_t status, uint32_t bytes, uint32_t read_us) {
+    writer_t w = {0};
+    wr_u8(&w, status);
+    wr_u16(&w, (uint16_t)bytes);
+    wr_u32(&w, read_us);
+    send_telem(PROTO_TOF_END, &w);
+}
+
 // --- shows -------------------------------------------------------------------------
 
 static uint8_t upload[SHOW_MAX_SIZE];   // padded with 0xff to whole flash pages
@@ -319,6 +376,73 @@ size_t protocol_request(uint8_t type, const uint8_t *payload, size_t len,
     dispatch(type, 0, payload, (int)len);
     capture = NULL;
     return capture_len;
+}
+
+static void dispatch_tof(uint8_t type, uint16_t seq, reader_t *r) {
+    const char *err = NULL;
+    switch (type) {
+    case PROTO_TOF_POWER: {
+        uint8_t op = rd_u8(r);
+        r->ok &= op <= 2 && r->left == 0;
+        if (r->ok && op == 0)
+            tof_off();
+        else if (r->ok)
+            err = tof_on(op == 2);
+        break;
+    }
+    case PROTO_TOF_INFO_REQ:
+        if (r->left == 0) {
+            send_tof_info(seq);
+            return;
+        }
+        r->ok = false;
+        break;
+    case PROTO_TOF_PRESET: {
+        uint8_t p = rd_u8(r);
+        r->ok &= r->left == 0;
+        if (r->ok && !(err = tof_preset(p))) {
+            send_tof_config(seq);
+            return;
+        }
+        break;
+    }
+    case PROTO_TOF_CONFIG_REQ:
+        if (r->left == 0) {
+            send_tof_config(seq);
+            return;
+        }
+        r->ok = false;
+        break;
+    case PROTO_TOF_CONFIG_SET: {
+        const uint8_t *page = take(r, TMF8829_CFG_SIZE);
+        r->ok &= r->left == 0;
+        if (r->ok && !(err = tof_config_write(page))) {
+            send_tof_config(seq);
+            return;
+        }
+        break;
+    }
+    case PROTO_TOF_MEASURE: {
+        uint8_t on = rd_u8(r);
+        r->ok &= r->left == 0;
+        if (r->ok)
+            err = tof_measure(on != 0, TOF_STREAM_BINARY);
+        break;
+    }
+    case PROTO_TOF_OPTIONS: {
+        uint16_t khz = rd_u16(r);
+        uint8_t clk = rd_u8(r);
+        r->ok &= r->left == 0;
+        if (r->ok && khz)
+            err = tof_set_bus_khz(khz);
+        if (r->ok && !err)
+            tof_set_clock_correction(clk != 0);
+        break;
+    }
+    }
+    if (err)
+        printf("tof: %s\n", err);
+    ack(seq, type, r->ok && !err ? PROTO_OK : PROTO_BAD_REQUEST, 0);
 }
 
 static void dispatch(uint8_t type, uint16_t seq, const uint8_t *payload, int n) {
@@ -535,6 +659,20 @@ static void dispatch(uint8_t type, uint16_t seq, const uint8_t *payload, int n) 
         break;
     case PROTO_CAM_STATUS:
         send_cam_info(seq);
+        return;
+    case PROTO_TOF_POWER:
+    case PROTO_TOF_INFO_REQ:
+    case PROTO_TOF_PRESET:
+    case PROTO_TOF_CONFIG_REQ:
+    case PROTO_TOF_CONFIG_SET:
+    case PROTO_TOF_MEASURE:
+    case PROTO_TOF_OPTIONS:
+        // Over I2C the sensor would take the bus out from under the request.
+        if (capture) {
+            ack(seq, type, PROTO_BAD_REQUEST, 0);
+            return;
+        }
+        dispatch_tof(type, seq, &r);
         return;
     case PROTO_TELEMETRY: {
         uint16_t hz = rd_u16(&r);

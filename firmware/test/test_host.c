@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c ../src/programs.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c ../src/programs.c ../src/tof_frame.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -24,6 +24,7 @@
 #include "cam.h"
 #include "cam_store.h"
 #include "trig.h"
+#include "tof_frame.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
 #define SPAN (PERIOD_CLOCKS - 4 * HBRIDGE_SEGMENT_OVERHEAD)
@@ -1122,6 +1123,50 @@ static void test_motion(void) {
     CHECK(!motion_set_profile(&ax, PROFILE_TRAP, 0), "set_profile allowed while moving");
 }
 
+static void test_tof(void) {
+    // Record sizes: 1 peak = distance + confidence; signal adds 2 per peak.
+    CHECK(tof_record_size(1) == 3, "1 peak: %u", tof_record_size(1));
+    CHECK(tof_record_size(TOF_LAYOUT_SUBFRAME | 1) == 3, "sub-frame bit changed the size");
+    CHECK(tof_record_size(4 | TOF_LAYOUT_SIGNAL | TOF_LAYOUT_NOISE | TOF_LAYOUT_XTALK) == 24, "largest: %u",
+          tof_record_size(4 | TOF_LAYOUT_SIGNAL | TOF_LAYOUT_NOISE | TOF_LAYOUT_XTALK));
+    uint32_t c, r, f;
+    tof_grid(5, &c, &r, &f);
+    CHECK(c == 48 && r == 16 && f == 2, "48x32 grid %ux%u x%u", c, r, f);
+    tof_grid(0, &c, &r, &f);
+    CHECK(c == 8 && r == 8 && f == 1, "8x8 grid %ux%u x%u", c, r, f);
+
+    // Clock: a chip running 2 % slow (fewer ticks per host second) reads
+    // distances 2 % short; the ratio scales them back up.
+    tof_clock_t clk;
+    tof_clock_reset(&clk);
+    for (uint32_t k = 0; k < 6; k++)
+        tof_clock_add(&clk, 4000000000u + k * 33000u, 0xfffff000u + (uint32_t)(k * 33 * 125 * 0.98), 125);
+    CHECK(fabsf(clk.ratio - 1.0f / 0.98f) < 2e-3f, "clock ratio %f (host and chip counters wrap)",
+          (double)clk.ratio);
+    tof_clock_reset(&clk);
+    for (uint32_t k = 0; k < 6; k++)
+        tof_clock_add(&clk, k * 33000u, k * 33 * 125 * 3, 125);  // implausible: kept at 1
+    CHECK(clk.ratio == 1.0f, "implausible ratio accepted: %f", (double)clk.ratio);
+
+    // Two zones, layout noise + xtalk + 2 peaks with signal: distances sit at
+    // 4 and 9 within each 14-byte record.
+    uint8_t layout = 2 | TOF_LAYOUT_SIGNAL | TOF_LAYOUT_NOISE | TOF_LAYOUT_XTALK;
+    uint8_t rec[28] = {0};
+    rec[4] = 0xe8, rec[5] = 0x03, rec[6] = 9;          // zone 0 peak 0: 1000, confidence 9
+    rec[9] = 0xd0, rec[10] = 0x07, rec[11] = 4;        // zone 0 peak 1: 2000
+    rec[14 + 4] = 0x10, rec[14 + 5] = 0x27, rec[14 + 6] = 0;  // zone 1: 10000, no target
+    rec[0] = rec[2] = 0x55;                             // noise, xtalk: untouched
+    tof_correct_distances(rec, sizeof rec, layout, 1.01f);
+    CHECK((rec[4] | rec[5] << 8) == 1010 && (rec[9] | rec[10] << 8) == 2020, "corrected %u %u",
+          rec[4] | rec[5] << 8, rec[9] | rec[10] << 8);
+    CHECK(rec[0] == 0x55 && rec[2] == 0x55 && rec[6] == 9, "correction touched other fields");
+    tof_summary_t sum;
+    tof_summary_reset(&sum);
+    tof_summary_add(&sum, rec, sizeof rec, layout);
+    CHECK(sum.zones == 2 && sum.valid == 1 && sum.min_raw == 1010 && sum.max_raw == 1010,
+          "summary %u/%u %u-%u", sum.valid, sum.zones, sum.min_raw, sum.max_raw);
+}
+
 int main(void) {
     test_encoder();
     test_phase_inc();
@@ -1133,6 +1178,7 @@ int main(void) {
     test_standalone();
     test_cam();
     test_trig();
+    test_tof();
     test_motion();
     test_pvt();
     test_programs();

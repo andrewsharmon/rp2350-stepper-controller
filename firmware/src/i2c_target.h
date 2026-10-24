@@ -11,9 +11,13 @@
 //
 // The interrupt only collects bytes; requests run in the core 0 loop
 // (i2c_target_poll), since some write flash or print.
+//
+// The ToF sensor service (tof.h) borrows I2C1 as a host: release stops the
+// target, and init takes the port back.
 
 #include <stdbool.h>
 
 // False on boards without I2C target pins.
 bool i2c_target_init(void);
+void i2c_target_release(void);
 void i2c_target_poll(void);

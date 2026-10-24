@@ -16,6 +16,7 @@
 #include "show_store.h"
 #include "cam_store.h"
 #include "led.h"
+#include "tof.h"
 
 #define LINE_MAX      160
 #define MAX_TELEM_HZ  1000  // one line per motion tick
@@ -76,6 +77,14 @@ static const char help_text[] =
     "  tf <f,...>            per-axis fields: pos vel mode amp q (default pos,vel)\n"
     "  ts <f,...>|none       system fields: seq vmot ladder stop (default none)\n"
     "  te on|off             event lines: E <tick> done|underrun <ax>, stop <cause>, clear\n"
+    "  tof on|off|reload     ToF sensor (LightRanger 14 / TMF8829) on the Qwiic port; on takes the\n"
+    "                        port from the I2C target, off gives it back; reload re-downloads its firmware\n"
+    "  tof start|stop        measure: one summary line per measurement (tools/web/tof.html draws them)\n"
+    "  tof res <r>           zones: 8 16 32 48, or 8lr (long range), 8ha 16ha 32ha 48ha (high accuracy)\n"
+    "  tof period <ms>       measurement period     tof iter <k>  kilo-iterations per measurement\n"
+    "  tof get [reg]         configuration page (registers 0x22-0xdf)   tof set <reg> <value>\n"
+    "  tof i2c <kHz>         bus speed, 100-1000 (default 1000)    tof clk on|off  clock correction\n"
+    "  tof ?                 sensor status\n"
     "  echo on|off           echo typed characters and show the prompt (off for scripts)\n"
     "  stress on|off         every axis sweeps its own speed wave\n"
     "  ?                     status\n"
@@ -242,6 +251,88 @@ static void print_config(void) {
         if (s.cams_loaded & (1u << k))
             printf(" %lu", (unsigned long)k + 1);
     printf("%s\n", s.cams_loaded ? "" : " none");
+}
+
+static const struct {
+    const char *name;
+    uint8_t preset;
+} tof_presets[] = {
+    {"8", TMF8829_PRESET_8X8},        {"8lr", TMF8829_PRESET_8X8_LONG_RANGE},
+    {"8ha", TMF8829_PRESET_8X8_HIGH_ACCURACY}, {"16", TMF8829_PRESET_16X16},
+    {"16ha", TMF8829_PRESET_16X16_HIGH_ACCURACY}, {"32", TMF8829_PRESET_32X32},
+    {"32ha", TMF8829_PRESET_32X32_HIGH_ACCURACY}, {"48", TMF8829_PRESET_48X32},
+    {"48ha", TMF8829_PRESET_48X32_HIGH_ACCURACY},
+};
+
+static void tof_report(const char *err) {
+    if (err)
+        printf("tof: %s\n", err);
+}
+
+// Change config page bytes [off, off + len) to `v` (little-endian).
+static void tof_set_bytes(uint32_t off, uint32_t len, uint32_t v) {
+    uint8_t page[TMF8829_CFG_SIZE];
+    memcpy(page, tof_config(), sizeof page);
+    for (uint32_t k = 0; k < len; k++)
+        page[off + k] = (uint8_t)(v >> (8 * k));
+    tof_report(tof_config_write(page));
+}
+
+static void tof_command(int argc, char **argv) {
+    const char *sub = argc > 1 ? argv[1] : "?";
+    char *end;
+    long a = argc > 2 ? strtol(argv[2], &end, 0) : 0;
+    bool num = argc > 2 && *end == '\0';
+    if (strcmp(sub, "on") == 0 || strcmp(sub, "reload") == 0) {
+        tof_report(tof_on(sub[0] == 'r'));
+    } else if (strcmp(sub, "off") == 0) {
+        tof_off();
+    } else if (strcmp(sub, "start") == 0 || strcmp(sub, "stop") == 0) {
+        tof_report(tof_measure(strcmp(sub, "start") == 0, TOF_STREAM_TEXT));
+    } else if (strcmp(sub, "res") == 0 && argc == 3) {
+        uint32_t k = 0;
+        while (k < sizeof tof_presets / sizeof *tof_presets && strcmp(argv[2], tof_presets[k].name) != 0)
+            k++;
+        if (k == sizeof tof_presets / sizeof *tof_presets)
+            printf("tof res: 8 16 32 48, 8lr, 8ha 16ha 32ha 48ha\n");
+        else
+            tof_report(tof_preset(tof_presets[k].preset));
+    } else if ((strcmp(sub, "period") == 0 || strcmp(sub, "iter") == 0) && num && a >= 0 && a <= 0xffff) {
+        tof_set_bytes(sub[0] == 'p' ? TMF8829_CFG_PERIOD_MS : TMF8829_CFG_KILO_ITERATIONS, 2, (uint32_t)a);
+    } else if (strcmp(sub, "get") == 0 && (argc == 2 || num)) {
+        const uint8_t *page = tof_config();
+        uint32_t first = TMF8829_CFG_FIRST, last = TMF8829_CFG_FIRST + TMF8829_CFG_SIZE - 1;
+        if (argc == 3) {
+            if (a < (long)first || a > (long)last) {
+                printf("tof get: register 0x%02lx-0x%02lx\n", (unsigned long)first, (unsigned long)last);
+                return;
+            }
+            first = last = (uint32_t)a;
+        }
+        for (uint32_t reg = first & ~7u; reg <= last; reg++) {
+            if (reg % 8 == 0 || reg == first)
+                printf("%s0x%02lx:", reg == first ? "" : "\n", (unsigned long)reg);
+            if (reg < first)
+                printf("     ");
+            else
+                printf(" 0x%02x", page[reg - TMF8829_CFG_FIRST]);
+        }
+        putchar('\n');
+    } else if (strcmp(sub, "set") == 0 && argc == 4 && num) {
+        long v = strtol(argv[3], &end, 0);
+        if (*end || a < TMF8829_CFG_FIRST || a >= TMF8829_CFG_FIRST + TMF8829_CFG_SIZE || v < 0 || v > 255)
+            printf("tof set: <0x22-0xdf> <0-255>\n");
+        else
+            tof_set_bytes((uint32_t)(a - TMF8829_CFG_FIRST), 1, (uint32_t)v);
+    } else if (strcmp(sub, "i2c") == 0 && num) {
+        tof_report(tof_set_bus_khz((uint32_t)a));
+    } else if (strcmp(sub, "clk") == 0 && argc == 3) {
+        tof_set_clock_correction(strcmp(argv[2], "off") != 0);
+    } else if (strcmp(sub, "?") == 0) {
+        tof_print_status();
+    } else {
+        printf("? tof %s (type help)\n", sub);
+    }
 }
 
 static void run_line(char *buf) {
@@ -597,6 +688,8 @@ static void run_line(char *buf) {
     } else if (strcmp(cmd, "te") == 0 && argc == 2) {
         events_on = strcmp(argv[1], "off") != 0;
         telem_binary = false;
+    } else if (strcmp(cmd, "tof") == 0) {
+        tof_command(argc, argv);
     } else if (strcmp(cmd, "echo") == 0 && argc == 2) {
         echo = strcmp(argv[1], "off") != 0;
     } else if (strcmp(cmd, "stress") == 0 && argc == 2) {

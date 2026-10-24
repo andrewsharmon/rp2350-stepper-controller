@@ -1,0 +1,1601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToF 3D Viewer</title>
+<!--
+  Web Serial page for the TMF8829 time-of-flight sensor (MikroE LightRanger
+  14 Click) on the stepper controller's Qwiic port. Speaks the binary
+  protocol (firmware/src/protocol.h, TOF_* messages; framing in frame.h)
+  over the USB serial port, alongside the text console. Open it in Chrome or
+  Edge, from file:// or localhost (Web Serial needs a secure context).
+  Without a board, Demo plays a synthetic scene through the same decoder.
+-->
+<style>
+:root {
+  --bg: #f6f7f9; --panel: #ffffff; --border: #dde1e6; --text: #1b1f24; --muted: #66707a;
+  --accent: #2563eb; --accent-text: #ffffff; --track: #e6e9ee; --changed: #fef3c7;
+  --ok: #15803d; --warn: #b45309; --bad: #dc2626; --bad-text: #ffffff;
+  --view: #0d1117; --view-grid: #26303b; --view-text: #9aa6b2;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111418; --panel: #191d23; --border: #2b3139; --text: #e6e9ee; --muted: #8b95a1;
+    --accent: #3b82f6; --track: #262c34; --changed: #3a3214;
+    --ok: #22c55e; --warn: #f59e0b; --bad: #ef4444;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111418; --panel: #191d23; --border: #2b3139; --text: #e6e9ee; --muted: #8b95a1;
+  --accent: #3b82f6; --track: #262c34; --changed: #3a3214;
+  --ok: #22c55e; --warn: #f59e0b; --bad: #ef4444;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+main { max-width: 1280px; margin: 0 auto; padding: 16px; display: grid; gap: 12px; }
+h1 { font-size: 18px; margin: 0; }
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 14px 0 6px; }
+.panel { background: var(--panel); border: 1px solid var(--border); border-radius: 8px; padding: 12px; min-width: 0; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.spacer { flex: 1; }
+button {
+  font: inherit; padding: 6px 12px; border-radius: 6px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--panel); color: var(--text);
+}
+button:hover:not(:disabled) { border-color: var(--accent); }
+button:disabled { opacity: .45; cursor: default; }
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-text); }
+button.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+input[type=number], input[type=text], select {
+  font: inherit; padding: 5px 8px; border-radius: 6px; width: 90px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--text);
+}
+select { width: auto; }
+label { color: var(--muted); display: inline-flex; gap: 6px; align-items: center; }
+.pill { font-weight: 600; padding: 2px 10px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.pill.ok { color: var(--ok); } .pill.warn { color: var(--warn); } .pill.bad { color: var(--bad); } .pill.off { color: var(--muted); }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.small { font-size: 12px; }
+
+/* views */
+.views { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 12px; }
+.view { position: relative; background: var(--view); border-radius: 6px; overflow: hidden; touch-action: none; }
+.view canvas { display: block; width: 100%; }
+#c3d { height: 480px; cursor: grab; }
+#c3d.dragging { cursor: grabbing; }
+#cmap { cursor: crosshair; }
+.overlay { position: absolute; left: 8px; top: 6px; font: 12px var(--mono); color: var(--view-text); pointer-events: none; }
+.overlay.br { left: auto; right: 8px; top: auto; bottom: 6px; }
+#legend { height: 12px; border-radius: 3px; margin-top: 8px; }
+.legend-labels { display: flex; justify-content: space-between; font: 12px var(--mono); color: var(--muted); }
+#zoneInfo { min-height: 2.8em; margin-top: 8px; white-space: pre-wrap; }
+.stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 4px 12px; font-size: 12px; }
+.stats b { font: 600 14px var(--mono); display: block; }
+#hist { height: 160px; }
+
+/* settings */
+.fields { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 4px 16px; }
+.field { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; padding: 3px 6px; border-radius: 6px; }
+.field.changed { background: var(--changed); }
+.field .name { min-width: 0; }
+.field .name span { display: block; }
+.field .name .reg { font: 11px var(--mono); color: var(--muted); }
+.field input[type=number] { width: 100px; }
+.field input[type=text] { width: 160px; font-family: var(--mono); }
+.field .flags { display: flex; flex-wrap: wrap; gap: 2px 8px; justify-content: flex-end; max-width: 220px; font-size: 12px; }
+details > summary { cursor: pointer; color: var(--muted); font-weight: 600; margin: 4px 0; }
+.note { font-size: 12px; color: var(--muted); margin: 6px 0 0; }
+
+/* console */
+#log {
+  font-family: var(--mono); font-size: 12px; height: 160px; overflow-y: auto; white-space: pre-wrap;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 8px; margin: 0 0 8px;
+}
+#cmd { flex: 1; width: auto; font-family: var(--mono); }
+#unsupported { display: none; color: var(--bad); font-weight: 600; }
+
+@media (max-width: 900px) {
+  .views { grid-template-columns: 1fr; }
+  #c3d { height: 360px; }
+}
+</style>
+</head>
+<body>
+<main>
+  <div class="panel row">
+    <h1>ToF 3D Viewer</h1>
+    <span id="conn" class="pill off">disconnected</span>
+    <span id="fw" class="muted mono small"></span>
+    <span class="spacer"></span>
+    <span id="unsupported">Web Serial isn't available: use Chrome or Edge on desktop (Demo still works).</span>
+    <button id="demo" title="Play a synthetic scene through the decoder (no board needed)">Demo</button>
+    <button id="connect" class="primary">Connect</button>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <h2 style="margin:0">Sensor</h2>
+      <span id="state" class="pill off">—</span>
+      <span id="chip" class="muted mono small"></span>
+      <span class="spacer"></span>
+      <button id="powerOn" data-needs-conn>Sensor on</button>
+      <button id="powerOff" data-needs-conn>Sensor off</button>
+      <button id="reload" data-needs-conn title="Reset the sensor into its bootloader and download its firmware again">Reload firmware</button>
+      <button id="start" class="primary" data-needs-conn>Start</button>
+      <button id="stop" data-needs-conn>Stop</button>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <label>Preset
+        <select id="preset" data-needs-sensor></select>
+      </label>
+      <label>I²C
+        <select id="busKhz" data-needs-conn>
+          <option value="100">100 kHz</option>
+          <option value="400">400 kHz</option>
+          <option value="1000" selected>1 MHz</option>
+        </select>
+      </label>
+      <label title="Scale distances by the sensor clock's measured error (done in the firmware)">
+        <input id="clkCorr" type="checkbox" data-needs-conn checked> clock correction
+      </label>
+      <label title="Switch the sensor on as soon as the page connects">
+        <input id="autoOn" type="checkbox" checked> on at connect
+      </label>
+      <span class="spacer"></span>
+      <span id="errMsg" class="small" style="color:var(--bad)"></span>
+    </div>
+    <div class="stats" style="margin-top:10px">
+      <div><span class="muted">frame</span><b id="sFrame">—</b></div>
+      <div><span class="muted">rate</span><b id="sRate">—</b></div>
+      <div><span class="muted">zones with a target</span><b id="sValid">—</b></div>
+      <div><span class="muted">nearest / mean / far</span><b id="sRange">—</b></div>
+      <div><span class="muted">temperature</span><b id="sTemp">—</b></div>
+      <div><span class="muted">frame read</span><b id="sRead">—</b></div>
+      <div><span class="muted">clock ratio</span><b id="sClk">—</b></div>
+      <div><span class="muted">frames / bad / bus err</span><b id="sCounts">—</b></div>
+    </div>
+  </div>
+
+  <div class="views">
+    <div class="panel">
+      <div class="row" style="margin-bottom:8px">
+        <h2 style="margin:0">Point cloud</h2>
+        <span class="spacer"></span>
+        <label>Draw
+          <select id="drawMode">
+            <option value="points">zone patches</option>
+            <option value="dots">dots</option>
+            <option value="surface">surface</option>
+          </select>
+        </label>
+        <button id="resetView" title="Or double-click the view">Reset view</button>
+      </div>
+      <div class="view"><canvas id="c3d"></canvas>
+        <div class="overlay" id="o3d"></div>
+        <div class="overlay br">drag: orbit · shift/right-drag: pan · wheel: zoom</div>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="row" style="margin-bottom:8px">
+        <h2 style="margin:0">Depth map</h2>
+        <span class="spacer"></span>
+        <span id="gridName" class="mono muted small"></span>
+      </div>
+      <div class="view"><canvas id="cmap"></canvas></div>
+      <div id="legend"></div>
+      <div class="legend-labels"><span id="legLo">—</span><span id="legMid"></span><span id="legHi">—</span></div>
+      <div id="zoneInfo" class="mono small muted">Hover a zone for its values; click one to pick it for the histogram.</div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Display</h2>
+    <div class="row">
+      <label>Colour by
+        <select id="colorBy">
+          <option value="distance">distance</option>
+          <option value="confidence">confidence</option>
+          <option value="signal">signal</option>
+          <option value="noise">noise</option>
+        </select>
+      </label>
+      <label>Peak <select id="peak"><option value="0">1</option></select></label>
+      <label>Min confidence <input id="minConf" type="number" min="0" max="255" value="1"></label>
+      <label><input id="autoRange" type="checkbox" checked> auto range</label>
+      <label>Range <input id="rangeLo" type="number" min="0" step="50" value="0"> – <input id="rangeHi" type="number" min="1" step="50" value="3000"> mm</label>
+      <label>Patch size <input id="patch" type="number" min="0.2" max="3" step="0.1" value="1"></label>
+      <label title="Report z (depth along the axis) instead of the radial distance"><input id="pcCorr" type="checkbox" checked> point-cloud correction</label>
+      <label><input id="flipX" type="checkbox"> flip X</label>
+      <label><input id="flipY" type="checkbox"> flip Y</label>
+      <span class="spacer"></span>
+      <button id="savePly" title="Save the current point cloud as a PLY file">Save PLY</button>
+      <button id="saveCsv" title="Save the current zones as CSV">Save CSV</button>
+    </div>
+  </div>
+
+  <div class="panel" id="histPanel" style="display:none">
+    <div class="row" style="margin-bottom:8px">
+      <h2 style="margin:0">Histogram</h2>
+      <span id="histInfo" class="mono muted small"></span>
+      <span class="spacer"></span>
+      <label><input id="histRef" type="checkbox" checked> reference SPADs</label>
+    </div>
+    <div class="view"><canvas id="hist"></canvas></div>
+  </div>
+
+  <div class="panel">
+    <div class="row">
+      <h2 style="margin:0">Configuration</h2>
+      <span id="cfgState" class="muted small"></span>
+      <span class="spacer"></span>
+      <button id="cfgRead" data-needs-sensor title="Read the page back from the sensor">Read</button>
+      <button id="cfgRevert" data-needs-sensor title="Drop the changes not yet applied">Revert</button>
+      <button id="cfgDefaults" title="Fill in the application's power-up values (apply to send them)">Power-up values</button>
+      <button id="cfgApply" class="primary" data-needs-sensor title="Write the page to the sensor (a running measurement restarts)">Apply</button>
+    </div>
+    <h3>Common</h3>
+    <div id="quickFields" class="fields"></div>
+    <details id="allDetails">
+      <summary>Every register on the configuration page (0x22–0xdf)</summary>
+      <div id="allFields"></div>
+    </details>
+    <p class="note">
+      Pick the zone layout with <b>Preset</b>: it sets the focal-plane mode and its timing together, then
+      reloads this page. Changes are highlighted until applied. Applying writes the whole page; the sensor keeps
+      what it accepts and the page shows what it read back. Field names follow ams's register map; see the
+      TMF8829 datasheet for their full meaning.
+    </p>
+  </div>
+
+  <div class="panel">
+    <h2>Console</h2>
+    <pre id="log"></pre>
+    <form id="cmdForm" class="row">
+      <input id="cmd" type="text" placeholder="console command, e.g. tof ?, tof get, help" autocomplete="off" data-needs-conn>
+      <button id="send" data-needs-conn>Send</button>
+    </form>
+    <p class="note">
+      Wiring: the Click on the Qwiic port (SDA, SCL, 3V3, GND) with its I²C/SPI selection set to I²C, its EN pin
+      (mikroBUS PWM) held high, and 3V3 for it (bridge JP1 QWIIC_SUPPLY or feed it separately). Turning the sensor
+      on makes the Qwiic port an I²C host; turning it off gives the port back to the I²C target at 0x42.
+    </p>
+  </div>
+</main>
+
+<script>
+'use strict';
+
+// ---- protocol constants (firmware/src/protocol.h) ---------------------------
+const T = {
+  PING: 0x01,
+  TOF_POWER: 0x70, TOF_INFO_REQ: 0x71, TOF_PRESET: 0x72, TOF_CONFIG_REQ: 0x73,
+  TOF_CONFIG_SET: 0x74, TOF_MEASURE: 0x75, TOF_OPTIONS: 0x76,
+  ACK: 0x80, PONG: 0x81, TOF_INFO: 0x85, TOF_CONFIG: 0x86,
+  TELEM: 0x90, EVENT: 0x91, TOF_HDR: 0x92, TOF_DATA: 0x93, TOF_END: 0x94,
+};
+const STREAMED = new Set([T.TELEM, T.EVENT, T.TOF_HDR, T.TOF_DATA, T.TOF_END]);
+const RESULT = ['OK', 'QUEUE_FULL', 'BAD_REQUEST', 'UNKNOWN'];
+const STATES = ['off', 'starting', 'idle', 'measuring', 'error'];
+const ERRORS = [   // tof_error_t, firmware/src/tof.c
+  '', 'no Qwiic I2C on this board', 'no answer at 0x41 (sensor power, EN high, pull-ups, wiring)',
+  'sensor CPU never got ready', 'bootloader not reached or refused a command (power-cycle the sensor)',
+  'firmware download failed', "sensor application didn't start", 'preset or configuration refused',
+  "measurement wouldn't start or stop", 'repeated bus errors while measuring',
+];
+const PRESETS = [
+  [0x40, '8×8'], [0x41, '8×8 long range'], [0x42, '8×8 high accuracy'],
+  [0x43, '16×16'], [0x44, '16×16 high accuracy'], [0x45, '32×32'], [0x46, '32×32 high accuracy'],
+  [0x47, '48×32'], [0x48, '48×32 high accuracy'],
+];
+const PRESET_FP = { 0x40: 0, 0x41: 0, 0x42: 0, 0x43: 2, 0x44: 2, 0x45: 3, 0x46: 3, 0x47: 5, 0x48: 5 };
+const CFG_FIRST = 0x22, CFG_SIZE = 190;
+const INFO_MS = 400, REPLY_TIMEOUT_MS = 800;
+
+// ---- framing (firmware/src/frame.h): 0x00, COBS(type, seq, payload, crc16), 0x00
+function crc16(bytes) {
+  let crc = 0xffff;
+  for (const b of bytes) {
+    crc ^= b << 8;
+    for (let k = 0; k < 8; k++) crc = crc & 0x8000 ? ((crc << 1) ^ 0x1021) & 0xffff : (crc << 1) & 0xffff;
+  }
+  return crc;
+}
+
+function cobsEncode(input) {
+  const out = [0];
+  let codeAt = 0, code = 1;
+  for (let i = 0; i < input.length; i++) {
+    if (input[i] === 0) {
+      out[codeAt] = code; codeAt = out.length; out.push(0); code = 1;
+      continue;
+    }
+    out.push(input[i]);
+    if (++code === 0xff) {
+      out[codeAt] = code;
+      if (i + 1 === input.length) return out;
+      codeAt = out.length; out.push(0); code = 1;
+    }
+  }
+  out[codeAt] = code;
+  return out;
+}
+
+function cobsDecode(input, n) {
+  const out = new Uint8Array(n);
+  let i = 0, o = 0;
+  while (i < n) {
+    const code = input[i++];
+    if (code === 0) return null;
+    for (let k = 1; k < code; k++) {
+      if (i >= n || input[i] === 0) return null;
+      out[o++] = input[i++];
+    }
+    if (code !== 0xff && i < n) out[o++] = 0;
+  }
+  return out.subarray(0, o);
+}
+
+function buildFrame(type, seq, payload) {
+  const raw = [type, seq & 0xff, seq >> 8, ...payload];
+  const crc = crc16(raw);
+  raw.push(crc & 0xff, crc >> 8);
+  return new Uint8Array([0, ...cobsEncode(raw), 0]);
+}
+
+function parseFrame(bytes, n) {
+  const raw = cobsDecode(bytes, n);
+  if (!raw || raw.length < 5) return null;
+  const m = raw.length;
+  if (crc16(raw.subarray(0, m - 2)) !== (raw[m - 2] | raw[m - 1] << 8)) return null;
+  return { type: raw[0], seq: raw[1] | raw[2] << 8, payload: raw.slice(3, m - 2) };
+}
+
+class W {
+  constructor() { this.b = []; }
+  u8(v) { this.b.push(v & 0xff); return this; }
+  u16(v) { this.b.push(v & 0xff, (v >> 8) & 0xff); return this; }
+  bytes(a) { for (const v of a) this.b.push(v); return this; }
+}
+const dv = p => new DataView(p.buffer, p.byteOffset, p.byteLength);
+
+// ---- connection --------------------------------------------------------------
+let port = null, writer = null, reader = null, readDone = Promise.resolve();
+let writeChain = Promise.resolve();
+let seq = 0;
+const pending = new Map();
+let infoTimer = null, infoInFlight = false;
+
+function write(bytes) {
+  writeChain = writeChain.then(() => writer && writer.write(bytes)).catch(e => logLine(`write failed: ${e.message}`));
+  return writeChain;
+}
+
+function request(type, w = new W()) {
+  if (!writer) return Promise.reject(new Error('not connected'));
+  seq = (seq + 1) & 0xffff || 1;
+  const s = seq;
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => { pending.delete(s); reject(new Error('no reply')); }, REPLY_TIMEOUT_MS);
+    pending.set(s, { resolve, reject, timer });
+    write(buildFrame(type, s, w.b));
+  });
+}
+
+function command(type, w, what) {
+  return request(type, w).catch(e => { logLine(`${what}: ${e.message}`); return null; });
+}
+
+function sendText(line) { write(new TextEncoder().encode(line + '\n')); }
+
+function onReply(f) {
+  const p = pending.get(f.seq);
+  if (!p) return;
+  pending.delete(f.seq);
+  clearTimeout(p.timer);
+  if (f.type === T.ACK && f.payload[1] !== 0) {
+    p.reject(new Error(RESULT[f.payload[1]] || `result ${f.payload[1]}`));
+    return;
+  }
+  p.resolve(f);
+}
+
+// Byte demux: frames between zeros, everything else is console text. A
+// "frame" that fails to parse is taken to be a resync (its closing zero was
+// really an opening one), so a stream joined mid-frame recovers.
+const rx = { inFrame: false, buf: new Uint8Array(1024), n: 0 };
+const textDecoder = new TextDecoder();
+function onBytes(chunk) {
+  let textStart = -1;
+  const flushText = end => {
+    if (textStart >= 0) { logText(textDecoder.decode(chunk.subarray(textStart, end), { stream: true })); textStart = -1; }
+  };
+  for (let i = 0; i < chunk.length; i++) {
+    const c = chunk[i];
+    if (c === 0) {
+      flushText(i);
+      if (rx.inFrame && rx.n) {
+        const f = parseFrame(rx.buf, rx.n);
+        if (f) {
+          rx.inFrame = false;
+          if (STREAMED.has(f.type)) onStream(f.type, f.payload); else onReply(f);
+        }
+      } else {
+        rx.inFrame = true;
+      }
+      rx.n = 0;
+    } else if (rx.inFrame) {
+      if (rx.n < rx.buf.length) rx.buf[rx.n++] = c; else { rx.inFrame = false; rx.n = 0; }
+    } else if (textStart < 0) {
+      textStart = i;
+    }
+  }
+  flushText(chunk.length);
+}
+
+async function readLoop() {
+  while (port && port.readable) {
+    reader = port.readable.getReader();
+    try {
+      for (;;) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value) onBytes(value);
+      }
+    } catch (e) {
+      logLine(`read: ${e.message}`);
+    } finally {
+      reader.releaseLock();
+      reader = null;
+    }
+    if (!writer) break;
+  }
+  if (writer) disconnect('port closed');
+}
+
+async function connect() {
+  stopDemo();
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: 115200, bufferSize: 65536 });
+  } catch (e) {
+    port = null;
+    if (e.name !== 'NotFoundError') logLine(`connect: ${e.message}`);
+    return;
+  }
+  writer = port.writable.getWriter();
+  rx.inFrame = false; rx.n = 0;
+  readDone = readLoop();
+  setConn('warn', 'connecting…');
+  try {
+    let pong = null;
+    for (let k = 0; k < 3 && !pong; k++) pong = await request(T.PING).catch(() => null);
+    if (!pong || pong.type !== T.PONG) throw new Error('no reply to ping: is this the stepper board?');
+    const name = new TextDecoder().decode(pong.payload.subarray(8));
+    $('fw').textContent = `${name} · protocol v${pong.payload[0]}`;
+    const info = await request(T.TOF_INFO_REQ).catch(() => null);
+    if (!info || info.type !== T.TOF_INFO) throw new Error('the firmware has no ToF support: flash the tof-tmf8829 build');
+    showInfo(info.payload);
+  } catch (e) {
+    logLine(e.message);
+    await disconnect();
+    return;
+  }
+  setConn('ok', 'connected');
+  setEnabled();
+  await command(T.TOF_OPTIONS, new W().u16(Number($('busKhz').value)).u8($('clkCorr').checked ? 1 : 0), 'options');
+  if (sensor.state === 0 && $('autoOn').checked) powerOn(1);
+  infoTimer = setInterval(pollInfo, INFO_MS);
+}
+
+async function disconnect(why) {
+  if (!port) return;
+  clearInterval(infoTimer); infoTimer = null;
+  for (const p of pending.values()) { clearTimeout(p.timer); p.reject(new Error('disconnected')); }
+  pending.clear();
+  const w = writer, p = port;
+  writer = null; port = null;
+  try { if (reader) await reader.cancel(); } catch (e) {}
+  await readDone;
+  try { if (w) { await writeChain; w.releaseLock(); } } catch (e) {}
+  try { if (p) await p.close(); } catch (e) {}
+  setConn('off', why || 'disconnected');
+  $('fw').textContent = '';
+  sensor.state = -1;
+  showState();
+  setEnabled();
+}
+
+// ---- sensor state --------------------------------------------------------------
+const sensor = { state: -1, error: 0, preset: 0, measuring: false };
+let configFetched = false;
+
+async function pollInfo() {
+  if (infoInFlight || !writer) return;
+  infoInFlight = true;
+  try {
+    const f = await request(T.TOF_INFO_REQ);
+    if (f.type === T.TOF_INFO) showInfo(f.payload);
+  } catch (e) {
+  } finally {
+    infoInFlight = false;
+  }
+}
+
+function showInfo(p) {
+  const d = dv(p);
+  const was = sensor.state;
+  sensor.state = p[0];
+  sensor.error = p[1];
+  const ver = [...p.subarray(2, 6)].join('.');
+  const serial = d.getUint32(8, true).toString(16).padStart(8, '0');
+  sensor.busKhz = d.getUint16(12, true);
+  sensor.clk = !!(p[14] & 1);
+  sensor.preset = p[15];
+  sensor.download = p[16];
+  sensor.frames = d.getUint32(17, true);
+  sensor.bad = d.getUint32(21, true);
+  sensor.busErrors = d.getUint32(25, true);
+  sensor.ratio = d.getFloat32(29, true);
+  sensor.readUs = d.getUint32(33, true);
+  $('chip').textContent = sensor.state >= 2 && p[2] ? `app ${ver} · chip ${p[6]} rev ${p[7]} · serial ${serial}` : '';
+  $('sClk').textContent = sensor.ratio.toFixed(5);
+  $('sCounts').textContent = `${sensor.frames} / ${sensor.bad} / ${sensor.busErrors}`;
+  if (sensor.readUs) $('sRead').textContent = `${(sensor.readUs / 1000).toFixed(1)} ms`;
+  if ($('busKhz').value != sensor.busKhz && document.activeElement !== $('busKhz')) $('busKhz').value = sensor.busKhz;
+  if (document.activeElement !== $('clkCorr')) $('clkCorr').checked = sensor.clk;
+  showState();
+  setEnabled();
+  if (sensor.state >= 2 && sensor.state <= 3 && (!configFetched || was < 2)) fetchConfig();
+  if (sensor.state < 2) configFetched = false;
+}
+
+function showState() {
+  const el = $('state');
+  const s = sensor.state;
+  if (demo.on) { el.className = 'pill ok'; el.textContent = 'demo'; $('errMsg').textContent = ''; return; }
+  el.className = 'pill ' + (s < 0 ? 'off' : ['off', 'warn', 'ok', 'ok', 'bad'][s]);
+  el.textContent = s < 0 ? '—' : s === 1 ? `starting ${sensor.download}%` : STATES[s];
+  $('errMsg').textContent = s === 4 ? ERRORS[sensor.error] || `error ${sensor.error}` : '';
+}
+
+async function powerOn(op) {
+  const r = await command(T.TOF_POWER, new W().u8(op), op === 2 ? 'reload' : 'sensor on');
+  pollInfo();
+  return r;
+}
+
+async function fetchConfig() {
+  configFetched = true;
+  const f = await command(T.TOF_CONFIG_REQ, new W(), 'read configuration');
+  if (f && f.type === T.TOF_CONFIG) takeConfig(f.payload);
+}
+
+function takeConfig(p) {
+  sensor.preset = p[0];
+  page = p.slice(1, 1 + CFG_SIZE);
+  edit = page.slice();
+  if (sensor.preset) $('preset').value = sensor.preset;
+  renderValues();
+}
+
+// ---- frame assembly ------------------------------------------------------------
+// TOF_HDR opens a frame, TOF_DATA fills it, TOF_END closes it.
+let asm = null;
+const i8 = b => (b << 24) >> 24;
+
+function onStream(type, p) {
+  if (type === T.TOF_HDR) {
+    if (p.length < 29) return;
+    const d = dv(p);
+    const payload = d.getUint16(11, true);
+    asm = {
+      hostUs: d.getUint32(0, true), tick: d.getUint32(5, true),
+      id: p[9], layout: p[10], fnum: d.getUint32(13, true),
+      temp: [i8(p[17]), i8(p[18]), i8(p[19])], bdv: p[20], ratio: d.getFloat32(25, true),
+      buf: new Uint8Array(Math.max(0, payload - 12)), got: 0,
+    };
+  } else if (type === T.TOF_DATA) {
+    if (!asm || p.length < 2) return;
+    const off = p[0] | p[1] << 8, n = p.length - 2;
+    if (off + n > asm.buf.length) { asm = null; return; }
+    asm.buf.set(p.subarray(2), off);
+    asm.got += n;
+  } else if (type === T.TOF_END) {
+    const f = asm;
+    asm = null;
+    if (!f || p[0] !== 0 || f.got !== f.buf.length) { stats.dropped++; return; }
+    if ((f.id & 0xf0) === 0x10) addResultFrame(f);
+    else if ((f.id & 0xf0) === 0x20) addHistogramFrame(f);
+  }
+}
+
+// Zone grid per focal-plane mode: [cols, rows per frame, frames].
+function grid(fp) {
+  if (fp <= 1) return [8, 8, 1];
+  if (fp === 2) return [16, 16, 1];
+  if (fp <= 4) return [32, 16, 2];
+  return [48, 16, 2];
+}
+
+function recordSize(layout) {
+  const peaks = layout & 7;
+  return peaks * (3 + (layout & 8 ? 2 : 0)) + (layout & 16 ? 2 : 0) + (layout & 32 ? 2 : 0);
+}
+
+let meas = null, latest = null;
+const stats = { dropped: 0, times: [] };
+
+function newMeasurement(f, fp, cols, rows, frames) {
+  const n = cols * rows, peaks = Math.max(1, f.layout & 7);
+  return {
+    fp, cols, rows, frames, n, peaks, layout: f.layout, fnum: f.fnum, temp: f.temp, subs: 0,
+    dist: Array.from({ length: peaks }, () => new Float32Array(n)),
+    conf: Array.from({ length: peaks }, () => new Uint8Array(n)),
+    signal: (f.layout & 8) ? Array.from({ length: peaks }, () => new Uint16Array(n)) : null,
+    noise: (f.layout & 16) ? new Uint16Array(n) : null,
+    xtalk: (f.layout & 32) ? new Uint16Array(n) : null,
+  };
+}
+
+function addResultFrame(f) {
+  const fp = f.id & 0x0f;
+  const [cols, rowsPer, frames] = grid(fp);
+  const sub = f.layout & 0x40 ? 1 : 0;
+  const rows = rowsPer * frames;
+  const layout = f.layout & 0x3f;
+  if (!meas || sub === 0 || meas.fp !== fp || (meas.layout & 0x3f) !== layout) meas = newMeasurement(f, fp, cols, rows, frames);
+  const rec = recordSize(layout);
+  const body = f.buf.length - 12;
+  const footer = f.buf.subarray(body);
+  const unit = footer[9] & 1 ? 1 : 0.25;
+  const peaks = layout & 7;
+  const d = dv(f.buf);
+  for (let y = 0; y < rowsPer; y++) {
+    const row = frames === 2 ? 2 * y + sub : y;
+    for (let x = 0; x < cols; x++) {
+      let o = (y * cols + x) * rec;
+      if (o + rec > body) break;
+      const i = row * cols + x;
+      if (layout & 16) { meas.noise[i] = d.getUint16(o, true); o += 2; }
+      if (layout & 32) { meas.xtalk[i] = d.getUint16(o, true); o += 2; }
+      for (let k = 0; k < peaks; k++) {
+        meas.dist[k][i] = d.getUint16(o, true) * unit;
+        meas.conf[k][i] = f.buf[o + 2];
+        o += 3;
+        if (layout & 8) { meas.signal[k][i] = d.getUint16(o, true); o += 2; }
+      }
+    }
+  }
+  meas.subs |= 1 << sub;
+  meas.fnum = f.fnum;
+  meas.temp = f.temp;
+  meas.ratio = f.ratio;
+  if (sub === frames - 1) {
+    meas.complete = meas.subs === (1 << frames) - 1;
+    finishMeasurement(meas);
+    meas = null;
+  }
+}
+
+function finishMeasurement(m) {
+  latest = m;
+  const now = performance.now();
+  stats.times.push(now);
+  while (stats.times.length > 1 && now - stats.times[0] > 2000) stats.times.shift();
+  updatePeakSelect(m.peaks);
+  scheduleDraw();
+}
+
+// Histogram frames: 4 reference histograms of 64 bins, then a block of zone
+// histograms (256 bins in 8x8, 64 otherwise); the layout byte says which
+// part of the zone grid the block covers.
+let hist = { fp: -1, zones: new Map(), ref: [], bins: 64, cols: 0, rows: 0 };
+
+function addHistogramFrame(f) {
+  const fp = f.id & 0x0f, sub = f.layout;
+  const [cols, rowsPer, frames] = grid(fp);
+  const rows = rowsPer * frames;
+  const bins = fp <= 1 ? 256 : 64;
+  const xx = fp <= 1 ? 4 : 8, yy = fp <= 1 ? 8 : 16;
+  const fovRows = fp <= 1 ? 8 : 16, fovCols = fp <= 1 ? 8 : 16;
+  const perMpX = cols / fovCols, perMpY = rows / fovRows;
+  if (hist.fp !== fp) hist = { fp, zones: new Map(), ref: [], bins, cols, rows };
+  if (sub === 0) hist.ref = [];
+  const b = f.buf;
+  const rd = o => b[o] | b[o + 1] << 8 | b[o + 2] << 16;
+  let o = 0;
+  for (let r = 0; r < 4; r++) {
+    const h = new Uint32Array(64);
+    for (let k = 0; k < 64; k++, o += 3) h[k] = rd(o);
+    hist.ref.push(h);
+  }
+  const left = sub % 2 ? cols / 2 : 0;
+  let colOff = 0, rowOff = 0;
+  if (fp <= 4) { if ([2, 3, 6, 7].includes(sub)) colOff = 1; if (sub > 3) rowOff = 1; }
+  else { if ([2, 3, 8, 9].includes(sub)) colOff = 1; if ([4, 5, 10, 11].includes(sub)) colOff = 2; if (sub > 5) rowOff = 1; }
+  for (let i = 0; i < yy; i++) {
+    for (let j = 0; j < xx; j++) {
+      const h = new Uint32Array(bins);
+      for (let k = 0; k < bins && o + 3 <= b.length; k++, o += 3) h[k] = rd(o);
+      const y = i * perMpY + rowOff, x = j * perMpX + left + colOff;
+      if (y < rows && x < cols) hist.zones.set(y * cols + x, h);
+    }
+  }
+  $('histPanel').style.display = '';
+  drawHist();
+}
+
+// ---- geometry --------------------------------------------------------------------
+// Zone (px, py) looks along (ax, ay, 1): as in ams's point-cloud correction,
+// the field spans 3/4 of the column count across and the row count down.
+function zoneRay(px, py, cols, rows) {
+  const ax = (px - cols / 2 + 0.5) / (cols * 0.75);
+  const ay = (py - rows / 2 + 0.5) / rows;
+  return [ax, ay];
+}
+
+function zoneValue(m, i, peak, what) {
+  switch (what) {
+    case 'confidence': return m.conf[peak][i];
+    case 'signal': return m.signal ? m.signal[peak][i] : 0;
+    case 'noise': return m.noise ? m.noise[i] : 0;
+    default: return m.dist[peak][i];
+  }
+}
+
+function view() {
+  return {
+    peak: Math.min(Number($('peak').value) || 0, latest ? latest.peaks - 1 : 0),
+    minConf: Number($('minConf').value) || 0,
+    colorBy: $('colorBy').value,
+    flipX: $('flipX').checked, flipY: $('flipY').checked,
+    pcCorr: $('pcCorr').checked,
+    patch: Number($('patch').value) || 1,
+    draw: $('drawMode').value,
+  };
+}
+
+// Colour range: fixed, or the 2nd-98th percentile of what is on screen.
+function colorRange(m, v) {
+  if (v.colorBy === 'distance' && !$('autoRange').checked) {
+    const lo = Number($('rangeLo').value) || 0, hi = Number($('rangeHi').value) || 1;
+    return [lo, Math.max(hi, lo + 1)];
+  }
+  const vals = [];
+  for (let i = 0; i < m.n; i++) if (m.conf[v.peak][i] >= v.minConf && m.conf[v.peak][i] > 0) vals.push(zoneValue(m, i, v.peak, v.colorBy));
+  if (!vals.length) return [0, 1];
+  vals.sort((a, b) => a - b);
+  const lo = vals[Math.floor(vals.length * 0.02)], hi = vals[Math.floor((vals.length - 1) * 0.98)];
+  return [lo, Math.max(hi, lo + 1)];
+}
+
+// Turbo colour map (Mikhailov's polynomial fit), as 256 CSS colours.
+const TURBO = Array.from({ length: 256 }, (_, k) => {
+  const t = k / 255;
+  const r = 34.61 + t * (1172.33 + t * (-10793.56 + t * (33300.12 + t * (-38394.49 + t * 14825.05))));
+  const g = 23.31 + t * (557.33 + t * (1225.33 + t * (-3574.96 + t * (1073.77 + t * 707.56))));
+  const b = 27.2 + t * (3211.1 + t * (-15327.97 + t * (27814 + t * (-22569.18 + t * 6838.66))));
+  const c = x => Math.max(0, Math.min(255, Math.round(x)));
+  return [c(r), c(g), c(b)];
+});
+const TURBO_CSS = TURBO.map(([r, g, b]) => `rgb(${r},${g},${b})`);
+// Near is warm for distance; high is warm for everything else.
+function colorIndex(val, lo, hi, what) {
+  let t = (val - lo) / (hi - lo);
+  if (what === 'distance') t = 1 - t;
+  return Math.max(0, Math.min(255, Math.round(t * 255)));
+}
+
+// ---- 3D view ----------------------------------------------------------------------
+const cam = { yaw: -0.45, pitch: 0.3, dist: 2600, tx: 0, ty: 0, tz: 1200 };
+const CAM_DEFAULT = { ...cam };
+let drawQueued = false;
+function scheduleDraw() {
+  if (drawQueued) return;
+  drawQueued = true;
+  requestAnimationFrame(() => { drawQueued = false; draw3d(); drawMap(); showStats(); });
+}
+
+function fitCanvas(c) {
+  const r = c.getBoundingClientRect();
+  const dpr = window.devicePixelRatio || 1;
+  const w = Math.max(1, Math.round(r.width * dpr)), h = Math.max(1, Math.round(r.height * dpr));
+  if (c.width !== w || c.height !== h) { c.width = w; c.height = h; }
+  return [w, h, dpr];
+}
+
+function css(name) { return getComputedStyle(document.documentElement).getPropertyValue(name).trim(); }
+
+// World: x right, y up, z out from the sensor (mm).
+function points(m, v) {
+  const out = [];
+  for (let py = 0; py < m.rows; py++) {
+    for (let px = 0; px < m.cols; px++) {
+      const i = py * m.cols + px;
+      const c = m.conf[v.peak][i];
+      if (c === 0 || c < v.minConf) continue;
+      const [ax, ay] = zoneRay(px, py, m.cols, m.rows);
+      const d = m.dist[v.peak][i];
+      const z = v.pcCorr ? d / Math.sqrt(1 + ax * ax + ay * ay) : d;
+      out.push({ i, px, py, x: z * ax * (v.flipX ? -1 : 1), y: -z * ay * (v.flipY ? -1 : 1), z });
+    }
+  }
+  return out;
+}
+
+function draw3d() {
+  const c = $('c3d');
+  const [W, H, dpr] = fitCanvas(c);
+  const g = c.getContext('2d');
+  g.fillStyle = css('--view');
+  g.fillRect(0, 0, W, H);
+  const f = H / (2 * Math.tan(25 * Math.PI / 180));
+  const cy = Math.cos(cam.yaw), sy = Math.sin(cam.yaw), cp = Math.cos(cam.pitch), sp = Math.sin(cam.pitch);
+  // Orbit the target, then perspective. At yaw = pitch = 0 the camera sits
+  // behind the sensor looking out along +z; positive pitch looks down.
+  const project = (x, y, z) => {
+    x -= cam.tx; y -= cam.ty; z -= cam.tz;
+    const x1 = cy * x - sy * z, z1 = sy * x + cy * z;
+    const y2 = cp * y + sp * z1, z2 = -sp * y + cp * z1;
+    const zc = cam.dist + z2;
+    return [W / 2 + f * x1 / zc, H / 2 - f * y2 / zc, zc];
+  };
+  const line = (a, b) => {
+    const p = project(...a), q = project(...b);
+    if (p[2] <= 1 || q[2] <= 1) return;
+    g.moveTo(p[0], p[1]); g.lineTo(q[0], q[1]);
+  };
+
+  // Sensor field of view out to the far end of the colour range, and a floor grid.
+  const v = view();
+  const m = latest;
+  const reach = m ? Math.max(500, colorRange(m, { ...v, colorBy: 'distance' })[1]) : 2000;
+  g.lineWidth = dpr;
+  g.strokeStyle = css('--view-grid');
+  g.beginPath();
+  const fx = 2 / 3, fy = 0.5;
+  const corners = [[-fx, -fy], [fx, -fy], [fx, fy], [-fx, fy]].map(([a, b]) => [a * reach, -b * reach, reach]);
+  for (const k of corners) line([0, 0, 0], k);
+  for (let k = 0; k < 4; k++) line(corners[k], corners[(k + 1) % 4]);
+  const floor = -fy * reach;
+  for (let k = 0; k <= 10; k++) {
+    const t = k / 10;
+    line([-fx * reach, floor, t * reach], [fx * reach, floor, t * reach]);
+    line([(-1 + 2 * t) * fx * reach, floor, 0], [(-1 + 2 * t) * fx * reach, floor, reach]);
+  }
+  g.stroke();
+  g.fillStyle = css('--view-text');
+  const s0 = project(0, 0, 0);
+  g.beginPath(); g.arc(s0[0], s0[1], 4 * dpr, 0, 2 * Math.PI); g.fill();
+
+  if (!m) { $('o3d').textContent = 'no data yet'; return; }
+  const pts = points(m, v);
+  const [lo, hi] = colorRange(m, v);
+  for (const p of pts) {
+    const s = project(p.x, p.y, p.z);
+    p.sx = s[0]; p.sy = s[1]; p.zc = s[2];
+    p.col = colorIndex(zoneValue(m, p.i, v.peak, v.colorBy), lo, hi, v.colorBy);
+  }
+
+  if (v.draw === 'surface') {
+    const byZone = new Map(pts.map(p => [p.i, p]));
+    const quads = [];
+    for (let py = 0; py + 1 < m.rows; py++) {
+      for (let px = 0; px + 1 < m.cols; px++) {
+        const q = [py * m.cols + px, py * m.cols + px + 1, (py + 1) * m.cols + px + 1, (py + 1) * m.cols + px].map(i => byZone.get(i));
+        if (q.some(p => !p || p.zc <= 1)) continue;
+        const zs = q.map(p => p.z);
+        const zmin = Math.min(...zs), zmax = Math.max(...zs);
+        if (zmax - zmin > 0.12 * zmax + 30) continue;   // a depth jump: separate objects
+        quads.push({ q, zc: (q[0].zc + q[1].zc + q[2].zc + q[3].zc) / 4, col: Math.round((q[0].col + q[1].col + q[2].col + q[3].col) / 4) });
+      }
+    }
+    quads.sort((a, b) => b.zc - a.zc);
+    for (const { q, col } of quads) {
+      g.fillStyle = TURBO_CSS[col];
+      g.beginPath();
+      g.moveTo(q[0].sx, q[0].sy); g.lineTo(q[1].sx, q[1].sy); g.lineTo(q[2].sx, q[2].sy); g.lineTo(q[3].sx, q[3].sy);
+      g.closePath(); g.fill();
+    }
+  } else {
+    pts.sort((a, b) => b.zc - a.zc);
+    // A zone's patch: its angular size times its depth, projected.
+    const cw = 1 / (m.cols * 0.75), ch = 1 / m.rows;
+    for (const p of pts) {
+      if (p.zc <= 1) continue;
+      g.fillStyle = TURBO_CSS[p.col];
+      if (v.draw === 'dots') {
+        const r = Math.max(1.5 * dpr, 2.2 * dpr * v.patch * Math.sqrt(64 / m.n) * 2000 / p.zc);
+        g.beginPath(); g.arc(p.sx, p.sy, r, 0, 2 * Math.PI); g.fill();
+      } else {
+        const w = Math.max(1, f * p.z * cw * v.patch / p.zc), h = Math.max(1, f * p.z * ch * v.patch / p.zc);
+        g.fillRect(p.sx - w / 2, p.sy - h / 2, w, h);
+      }
+    }
+  }
+  if (selectedZone >= 0) {
+    const p = pts.find(q => q.i === selectedZone);
+    if (p && p.zc > 1) {
+      g.strokeStyle = '#ffffff'; g.lineWidth = 2 * dpr;
+      g.beginPath(); g.arc(p.sx, p.sy, 7 * dpr, 0, 2 * Math.PI); g.stroke();
+    }
+  }
+  $('o3d').textContent = `${m.cols}×${m.rows} · ${pts.length} points${m.complete === false ? ' · partial' : ''}`;
+}
+
+// ---- depth map ----------------------------------------------------------------------
+let mapGeom = null, hoverZone = -1, selectedZone = -1;
+
+function drawMap() {
+  const c = $('cmap');
+  const m = latest;
+  // True angular aspect: the field is 4/3 as wide as it is tall.
+  c.style.height = `${c.getBoundingClientRect().width * 0.75}px`;
+  const [W, H] = fitCanvas(c);
+  const g = c.getContext('2d');
+  g.fillStyle = css('--view');
+  g.fillRect(0, 0, W, H);
+  if (!m) return;
+  const v = view();
+  const [lo, hi] = colorRange(m, v);
+  const cw = W / m.cols, ch = H / m.rows;
+  for (let py = 0; py < m.rows; py++) {
+    for (let px = 0; px < m.cols; px++) {
+      const i = py * m.cols + px;
+      const sx = v.flipX ? m.cols - 1 - px : px, sy = v.flipY ? m.rows - 1 - py : py;
+      const conf = m.conf[v.peak][i];
+      g.fillStyle = conf === 0 || conf < v.minConf ? '#1c232c' : TURBO_CSS[colorIndex(zoneValue(m, i, v.peak, v.colorBy), lo, hi, v.colorBy)];
+      g.fillRect(Math.floor(sx * cw), Math.floor(sy * ch), Math.ceil(cw), Math.ceil(ch));
+    }
+  }
+  if (m.cols <= 16) {   // grid lines and readable values on coarse grids
+    g.strokeStyle = 'rgba(0,0,0,.35)'; g.lineWidth = 1;
+    g.beginPath();
+    for (let k = 1; k < m.cols; k++) { g.moveTo(Math.round(k * cw) + .5, 0); g.lineTo(Math.round(k * cw) + .5, H); }
+    for (let k = 1; k < m.rows; k++) { g.moveTo(0, Math.round(k * ch) + .5); g.lineTo(W, Math.round(k * ch) + .5); }
+    g.stroke();
+    if (m.cols <= 8 && cw > 34) {
+      g.font = `${Math.round(Math.min(cw, ch) * 0.24)}px ui-monospace, monospace`;
+      g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = 'rgba(0,0,0,.75)';
+      for (let i = 0; i < m.n; i++) {
+        const px = i % m.cols, py = Math.floor(i / m.cols);
+        if (m.conf[v.peak][i] === 0 || m.conf[v.peak][i] < v.minConf) continue;
+        const sx = v.flipX ? m.cols - 1 - px : px, sy = v.flipY ? m.rows - 1 - py : py;
+        const val = zoneValue(m, i, v.peak, v.colorBy);
+        g.fillText(v.colorBy === 'distance' ? Math.round(val) : val, (sx + .5) * cw, (sy + .5) * ch);
+      }
+    }
+  }
+  for (const [z, col] of [[selectedZone, '#ffffff'], [hoverZone, 'rgba(255,255,255,.6)']]) {
+    if (z < 0 || z >= m.n) continue;
+    const px = z % m.cols, py = Math.floor(z / m.cols);
+    const sx = v.flipX ? m.cols - 1 - px : px, sy = v.flipY ? m.rows - 1 - py : py;
+    g.strokeStyle = col; g.lineWidth = 2;
+    g.strokeRect(sx * cw + 1, sy * ch + 1, cw - 2, ch - 2);
+  }
+  mapGeom = { W, H, cw, ch, cols: m.cols, rows: m.rows };
+  drawLegend(lo, hi, v.colorBy);
+  $('gridName').textContent = `${m.cols}×${m.rows} zones`;
+}
+
+function drawLegend(lo, hi, what) {
+  const stops = [];
+  for (let k = 0; k <= 10; k++) {
+    const idx = colorIndex(lo + (hi - lo) * k / 10, lo, hi, what);
+    stops.push(`${TURBO_CSS[idx]} ${k * 10}%`);
+  }
+  $('legend').style.background = `linear-gradient(90deg, ${stops.join(',')})`;
+  const fmt = x => what === 'distance' ? `${Math.round(x)} mm` : `${Math.round(x)}`;
+  $('legLo').textContent = fmt(lo);
+  $('legMid').textContent = what;
+  $('legHi').textContent = fmt(hi);
+}
+
+function zoneAt(e) {
+  if (!mapGeom || !latest) return -1;
+  const r = $('cmap').getBoundingClientRect();
+  const sx = Math.floor((e.clientX - r.left) / r.width * mapGeom.cols);
+  const sy = Math.floor((e.clientY - r.top) / r.height * mapGeom.rows);
+  if (sx < 0 || sy < 0 || sx >= mapGeom.cols || sy >= mapGeom.rows) return -1;
+  const v = view();
+  const px = v.flipX ? mapGeom.cols - 1 - sx : sx, py = v.flipY ? mapGeom.rows - 1 - sy : sy;
+  return py * mapGeom.cols + px;
+}
+
+function showZone(i) {
+  const m = latest;
+  if (!m || i < 0 || i >= m.n) { $('zoneInfo').textContent = 'Hover a zone for its values; click one to pick it for the histogram.'; return; }
+  const px = i % m.cols, py = Math.floor(i / m.cols);
+  const parts = [];
+  for (let k = 0; k < m.peaks; k++) {
+    let s = `peak ${k + 1}: ${m.conf[k][i] ? m.dist[k][i].toFixed(1) + ' mm' : '—'}  conf ${m.conf[k][i]}`;
+    if (m.signal) s += `  signal ${m.signal[k][i]}`;
+    parts.push(s);
+  }
+  let head = `zone x ${px} y ${py}`;
+  if (m.noise) head += `  noise ${m.noise[i]}`;
+  if (m.xtalk) head += `  xtalk ${m.xtalk[i]}`;
+  $('zoneInfo').textContent = head + '\n' + parts.join('\n');
+}
+
+function showStats() {
+  const m = latest;
+  if (!m) return;
+  const v = view();
+  let n = 0, sum = 0, lo = Infinity, hi = -Infinity;
+  for (let i = 0; i < m.n; i++) {
+    if (m.conf[v.peak][i] === 0 || m.conf[v.peak][i] < v.minConf) continue;
+    const d = m.dist[v.peak][i];
+    n++; sum += d; lo = Math.min(lo, d); hi = Math.max(hi, d);
+  }
+  $('sFrame').textContent = m.fnum;
+  const t = stats.times;
+  $('sRate').textContent = t.length > 1 ? `${((t.length - 1) * 1000 / (t[t.length - 1] - t[0])).toFixed(1)} /s` : '—';
+  $('sValid').textContent = `${n} / ${m.n}`;
+  $('sRange').textContent = n ? `${Math.round(lo)} / ${Math.round(sum / n)} / ${Math.round(hi)}` : '—';
+  $('sTemp').textContent = `${m.temp[0]} °C`;
+  if (demo.on) { $('sClk').textContent = m.ratio.toFixed(5); $('sRead').textContent = 'demo'; }
+  if (hoverZone >= 0) showZone(hoverZone);
+}
+
+function updatePeakSelect(n) {
+  const sel = $('peak');
+  if (sel.options.length === n) return;
+  const cur = Number(sel.value) || 0;
+  sel.innerHTML = '';
+  for (let k = 0; k < n; k++) sel.append(new Option(String(k + 1), String(k)));
+  sel.value = String(Math.min(cur, n - 1));
+}
+
+// ---- histogram view --------------------------------------------------------------
+function drawHist() {
+  const c = $('hist');
+  const [W, H, dpr] = fitCanvas(c);
+  const g = c.getContext('2d');
+  g.fillStyle = css('--view');
+  g.fillRect(0, 0, W, H);
+  const zone = selectedZone >= 0 ? selectedZone : hist.zones.keys().next().value;
+  const h = hist.zones.get(zone);
+  const series = [];
+  if (h) series.push([h, '#60a5fa']);
+  if ($('histRef').checked) hist.ref.forEach((r, k) => series.push([r, ['#f59e0b', '#ef4444', '#a78bfa', '#22c55e'][k % 4]]));
+  let max = 1;
+  for (const [s] of series) for (const v of s) max = Math.max(max, v);
+  const pad = 6 * dpr;
+  for (const [s, col] of series) {
+    g.strokeStyle = col; g.lineWidth = dpr;
+    g.beginPath();
+    s.forEach((v, k) => {
+      const x = pad + (W - 2 * pad) * k / Math.max(1, s.length - 1), y = H - pad - (H - 2 * pad) * v / max;
+      k ? g.lineTo(x, y) : g.moveTo(x, y);
+    });
+    g.stroke();
+  }
+  const px = zone % hist.cols, py = Math.floor(zone / hist.cols);
+  $('histInfo').textContent = h ? `zone x ${px} y ${py} · ${hist.bins} bins · peak ${max} counts` :
+    'no histogram for this zone (pick one on the depth map; finer grids only carry some zones per frame)';
+}
+
+// ---- orbit controls ------------------------------------------------------------------
+(function orbit() {
+  const c = $('c3d');
+  let drag = null;
+  c.addEventListener('contextmenu', e => e.preventDefault());
+  c.addEventListener('pointerdown', e => {
+    c.setPointerCapture(e.pointerId);
+    drag = { x: e.clientX, y: e.clientY, pan: e.shiftKey || e.button === 2 };
+    c.classList.add('dragging');
+  });
+  c.addEventListener('pointermove', e => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    drag.x = e.clientX; drag.y = e.clientY;
+    if (drag.pan) {
+      const s = cam.dist / 600;
+      cam.tx -= (Math.cos(cam.yaw) * dx) * s;
+      cam.tz -= (-Math.sin(cam.yaw) * dx) * s;
+      cam.ty += dy * s;
+    } else {
+      cam.yaw += dx * 0.008;
+      cam.pitch = Math.max(-1.5, Math.min(1.5, cam.pitch + dy * 0.008));
+    }
+    scheduleDraw();
+  });
+  const end = () => { drag = null; c.classList.remove('dragging'); };
+  c.addEventListener('pointerup', end);
+  c.addEventListener('pointercancel', end);
+  c.addEventListener('wheel', e => {
+    e.preventDefault();
+    cam.dist = Math.max(200, Math.min(30000, cam.dist * Math.exp(e.deltaY * 0.0012)));
+    scheduleDraw();
+  }, { passive: false });
+  c.addEventListener('dblclick', resetView);
+})();
+
+function resetView() {
+  Object.assign(cam, CAM_DEFAULT);
+  if (latest) {
+    const v = view();
+    const [, hi] = colorRange(latest, { ...v, colorBy: 'distance' });
+    cam.tz = hi / 2;
+    cam.dist = Math.max(800, hi * 1.6);
+  }
+  scheduleDraw();
+}
+
+// ---- configuration page ------------------------------------------------------------
+// One entry per field. reg: first register; bytes: little-endian width;
+// bits/shift: the field within it. kind: num, bool, enum, flags, hex.
+const F = (reg, key, label, o = {}) => ({ reg, key, label, bytes: 1, shift: 0, bits: 8, kind: 'num', ...o });
+const GPIO_MODES = [[0, 'tristate'], [1, 'input IR'], [2, 'input active high'], [3, 'input active low'],
+  [4, 'out low while VCSEL pulses'], [5, 'out high while VCSEL pulses'], [6, 'output high'], [7, 'output low']];
+const SPREAD = [[0, 'TFM'], [1, 'RFM'], [2, 'RWM'], [3, 'reuse']];
+const FIELDS = [
+  ['Measurement', [
+    F(0x22, 'period', 'Measurement period', { bytes: 2, bits: 16, unit: 'ms', rst: 33, help: '0: a single measurement' }),
+    F(0x24, 'kiter', 'Iterations', { bytes: 2, bits: 16, unit: '×1024', rst: 586, help: 'more: better signal, longer exposure' }),
+    F(0x4a, 'hakiter', 'High-accuracy iterations', { bytes: 2, bits: 16, unit: '×1024', rst: 100 }),
+    F(0x26, 'fp', 'Focal plane mode', { bits: 3, kind: 'enum', rst: 2, options: [[0, '8×8 (digital combine)'], [1, '8×8 analog (do not use)'], [2, '16×16'], [3, '32×32 (2 SPADs)'], [4, '32×32 single SPAD'], [5, '48×32']], help: 'prefer the Preset menu' }),
+    F(0x4c, 'dual', 'Dual mode', { bits: 2, kind: 'enum', rst: 0, options: [[0, 'off'], [1, 'regular range'], [2, 'long range'], [3, 'reserved']] }),
+    F(0x8f, 'mm', 'Distances in mm', { bits: 1, kind: 'bool', rst: 0, help: 'else 0.25 mm units' }),
+  ]],
+  ['Results', [
+    F(0x2a, 'peaks', 'Peaks per zone', { bits: 3, rst: 1, max: 4 }),
+    F(0x2a, 'signal', 'Signal strength per peak', { bits: 1, shift: 3, kind: 'bool', rst: 0 }),
+    F(0x2a, 'noise', 'Noise per zone', { bits: 1, shift: 4, kind: 'bool', rst: 0 }),
+    F(0x2a, 'xtalk', 'Crosstalk per zone', { bits: 1, shift: 5, kind: 'bool', rst: 0 }),
+    F(0x2a, 'subres', 'Sub-result', { bits: 1, shift: 6, kind: 'bool', rst: 0 }),
+    F(0x2a, 'fullnoise', 'Full noise', { bits: 1, shift: 7, kind: 'bool', rst: 0 }),
+    F(0x2b, 'hist', 'Dump raw histograms', { bits: 1, kind: 'bool', rst: 0, help: '~25 KB frames: use a long period' }),
+    F(0x2c, 'refframe', 'Publish reference SPAD frame', { bits: 1, kind: 'bool', rst: 0, help: 'not streamed by this firmware' }),
+    F(0x2d, 'bdvtemp', 'BDV temperature sensor', { bits: 2, rst: 1 }),
+  ]],
+  ['Algorithm', [
+    F(0x53, 'conf', 'Confidence threshold', { rst: 6 }),
+    F(0x54, 'minsig', 'Minimum signal level', { bytes: 2, bits: 16, rst: 0 }),
+    F(0x58, 'mindist', 'Minimum distance', { bytes: 2, bits: 16, rst: 0, help: 'UQ format' }),
+    F(0x50, 'peakbins', 'Peak bins', { bits: 2, rst: 2 }),
+    F(0x51, 'refpeakbins', 'Reference peak bins', { bits: 2, rst: 2 }),
+    F(0x52, 'distsel', 'Distance algorithm select', { bits: 2, rst: 1 }),
+    F(0x56, 'poisson', 'Poisson adjust', { rst: 14 }),
+    F(0x57, 'peakstart', 'HW peak detect start', { rst: 25 }),
+    F(0x5a, 'taila', 'Tail model A', { bytes: 2, bits: 16, rst: 0 }),
+    F(0x5c, 'tailb', 'Tail model B', { bytes: 2, bits: 16, rst: 0 }),
+    F(0x5f, 'add100', 'Add 100 mm offset', { bits: 1, kind: 'bool', rst: 0 }),
+    F(0xa0, 'xtdist', 'Crosstalk distance', { unit: 'mm', rst: 0 }),
+    F(0xa2, 'xtmax', 'Crosstalk max', { bytes: 2, bits: 16, rst: 0 }),
+    F(0xa4, 'xtedge', 'Crosstalk edge', { bytes: 2, bits: 16, rst: 187 }),
+  ]],
+  ['Power', [
+    F(0x2e, 'cpusleep', 'CPU sleep', { bits: 1, kind: 'bool', rst: 1 }),
+    F(0x2e, 'devsleep', 'Device sleep between measurements', { bits: 1, shift: 1, kind: 'bool', rst: 0 }),
+    F(0x2e, 'lposc', 'Low-power oscillator in sleep', { bits: 1, shift: 2, kind: 'bool', rst: 1 }),
+    F(0x2e, 'crop', 'SPAD cropping', { bits: 1, shift: 3, kind: 'bool', rst: 0 }),
+  ]],
+  ['SPADs', [
+    F(0x27, 'spadsel', 'SPAD select', { bits: 6, rst: 63 }),
+    F(0x28, 'refspad', 'Reference SPADs', { bits: 6, kind: 'flags', rst: 2, options: [[1, 'low att. top'], [2, 'high att. top'], [4, 'mid att. top'], [8, 'low att. bottom'], [16, 'high att. bottom'], [32, 'mid att. bottom']] }),
+    F(0x29, 'deadtime', 'SPAD dead time', { bits: 6, rst: 60 }),
+    F(0x8c, 'spad8x8', 'SPAD select 8×8', { bytes: 3, bits: 24, kind: 'hex', rst: 'ffffff' }),
+  ]],
+  ['VCSEL and TDC', [
+    F(0x30, 't0vcsel', 'VCSEL on, t0', { bits: 2, rst: 2 }),
+    F(0x30, 't1vcsel', 'VCSEL on, t1', { bits: 2, shift: 2, rst: 1 }),
+    F(0x31, 'dinc', 'Dither increment', { bits: 3, rst: 0 }),
+    F(0x31, 'drounds', 'Dither rounds', { bits: 3, shift: 4, rst: 0 }),
+    F(0x32, 'pulse', 'VCSEL pulse width', { bits: 2, rst: 3 }),
+    F(0x32, 'extclk', 'External clock input', { bits: 1, shift: 7, kind: 'bool', rst: 0 }),
+    F(0x33, 'current', 'VCSEL drive current', { bits: 7, rst: 93 }),
+    F(0x34, 'hilen', 'Driver high length', { bits: 4, rst: 0 }),
+    F(0x34, 'exten', 'External enable output', { bits: 1, shift: 4, kind: 'bool', rst: 0 }),
+    F(0x34, 'extinv', 'Invert external output', { bits: 1, shift: 5, kind: 'bool', rst: 0 }),
+    F(0x36, 'vperiod', 'VCSEL period', { bytes: 2, bits: 10, unit: '×200 ps', rst: 249 }),
+    F(0x38, 'voffset', 'Driver offset', { bytes: 2, bits: 10, unit: '×200 ps', rst: 0 }),
+    F(0x3a, 'vcspramp', 'VCSEL spread amplitude', { bits: 4, rst: 0 }),
+    F(0x3a, 'vcsprcfg', 'VCSEL spread mode', { bits: 2, shift: 4, kind: 'enum', rst: 0, options: SPREAD }),
+    F(0x3a, 'vcsprse', 'VCSEL spread single edge', { bits: 1, shift: 6, kind: 'bool', rst: 0 }),
+    F(0x40, 'bins', 'Histogram bins', { bytes: 2, bits: 10, rst: 218 }),
+    F(0x42, 'binshift', 'Bin shift', { bits: 2, rst: 2 }),
+    F(0x43, 'refbinshift', 'Reference bin shift', { bits: 2, rst: 2 }),
+    F(0x44, 'tdcoff', 'TDC offset', { bytes: 2, bits: 10, unit: '×200 ps', rst: 14 }),
+    F(0x46, 'settle', 'TDC pre-periods (settling)', { bytes: 2, bits: 10, rst: 80 }),
+    F(0x48, 'hvspramp', 'HV charge pump spread amplitude', { bits: 4, rst: 0 }),
+    F(0x48, 'hvsprcfg', 'HV charge pump spread mode', { bits: 2, shift: 4, kind: 'enum', rst: 0, options: SPREAD }),
+    F(0x48, 'hvsprse', 'HV charge pump spread single edge', { bits: 1, shift: 6, kind: 'bool', rst: 0 }),
+    F(0x4d, 'hvovl', 'HV charge pump overload detect', { bits: 1, kind: 'bool', rst: 0 }),
+  ]],
+  ['Interrupts and motion', [
+    F(0x60, 'zonemask', 'Interrupt zone mask', { bytes: 8, bits: 64, kind: 'hex', rst: 'ffffffffffffffff' }),
+    F(0x68, 'thrlo', 'Threshold low', { bytes: 2, bits: 16, rst: 0 }),
+    F(0x6a, 'thrhi', 'Threshold high', { bytes: 2, bits: 16, rst: 65535 }),
+    F(0x6c, 'persist', 'Persistence', { rst: 0 }),
+    F(0x6d, 'post', 'Post-processing', { kind: 'enum', rst: 0, options: [[0, 'persistence'], [1, 'motion'], [2, 'motion, always results']] }),
+    F(0x6e, 'prox', 'Proximity distance', { rst: 0 }),
+    F(0xb0, 'motdist', 'Motion detect distance', { bytes: 2, bits: 16, rst: 2000 }),
+    F(0xb2, 'motsnr', 'Motion detect SNR', { rst: 10 }),
+    F(0xb3, 'relsnr', 'Motion release SNR', { rst: 6 }),
+    F(0xb4, 'motadj', 'Motion adjacent zones', { bits: 4, rst: 8 }),
+  ]],
+  ['Cropping', [
+    F(0x70, 'ctx', 'Crop top x', { bits: 4, rst: 0 }),
+    F(0x71, 'cty', 'Crop top y', { bits: 4, rst: 0 }),
+    F(0x72, 'cbx', 'Crop bottom x', { bits: 4, rst: 15 }),
+    F(0x73, 'cby', 'Crop bottom y', { bits: 4, rst: 15 }),
+    F(0x74, 'cref', 'Crop reference macro-pixel', { bits: 4, rst: 15 }),
+    F(0x78, 'fov', 'FoV correction (info)', { bits: 4, rst: 0 }),
+  ]],
+  ['GPIO and bus', [
+    ...[0, 1, 2, 3, 4, 5, 6].map(k => F(0x80 + k, `gpio${k}`, `GPIO ${k}`, { bits: 3, kind: 'enum', rst: 0, options: GPIO_MODES })),
+    F(0x87, 'predelay', 'GPIO pre-delay', { bits: 2, kind: 'enum', rst: 0, options: [[0, 'none'], [1, '100 µs'], [2, '200 µs']] }),
+    F(0x90, 'i2caddr', 'I²C address (8-bit)', { rst: 0x82, readonly: true, help: 'locked: the firmware talks to 0x41' }),
+  ]],
+];
+const QUICK = ['period', 'kiter', 'peaks', 'signal', 'noise', 'xtalk', 'conf', 'mm', 'dual', 'devsleep', 'hist', 'current'];
+const ALL_FIELDS = FIELDS.flatMap(([, fs]) => fs);
+const BY_KEY = Object.fromEntries(ALL_FIELDS.map(f => [f.key, f]));
+
+let page = null, edit = null;   // as read from the sensor / with local changes
+
+function fieldGet(f, pg) {
+  const o = f.reg - CFG_FIRST;
+  if (f.kind === 'hex') {
+    let s = '';
+    for (let k = f.bytes - 1; k >= 0; k--) s += pg[o + k].toString(16).padStart(2, '0');
+    return s;
+  }
+  if (f.bytes > 1) {
+    let v = 0;
+    for (let k = f.bytes - 1; k >= 0; k--) v = v * 256 + pg[o + k];
+    return f.bits < 8 * f.bytes ? v % 2 ** f.bits : v;
+  }
+  return (pg[o] >> f.shift) & ((1 << f.bits) - 1);
+}
+
+function fieldSet(f, pg, v) {
+  const o = f.reg - CFG_FIRST;
+  if (f.kind === 'hex') {
+    const s = String(v).replace(/[^0-9a-f]/gi, '').padStart(2 * f.bytes, '0').slice(-2 * f.bytes);
+    for (let k = 0; k < f.bytes; k++) pg[o + k] = parseInt(s.slice(s.length - 2 * (k + 1), s.length - 2 * k), 16);
+    return;
+  }
+  const max = Math.min(f.max ?? Infinity, 2 ** f.bits - 1);
+  v = Math.max(0, Math.min(max, Math.round(Number(v) || 0)));
+  if (f.bytes > 1) {
+    // Bits above the field in its top byte are kept.
+    const keep = f.bits < 8 * f.bytes ? pg[o + f.bytes - 1] & ~((1 << (f.bits - 8 * (f.bytes - 1))) - 1) : 0;
+    for (let k = 0; k < f.bytes; k++) { pg[o + k] = v % 256; v = Math.floor(v / 256); }
+    pg[o + f.bytes - 1] |= keep;
+    return;
+  }
+  const mask = ((1 << f.bits) - 1) << f.shift;
+  pg[o] = (pg[o] & ~mask) | ((v << f.shift) & mask);
+}
+
+function defaultPage() {
+  const pg = new Uint8Array(CFG_SIZE);
+  for (const f of ALL_FIELDS) fieldSet(f, pg, f.rst);
+  return pg;
+}
+
+const bound = [];   // {f, input, row}
+function fieldRow(f) {
+  const row = el('div', 'field');
+  const name = el('div', 'name');
+  name.append(el('span', '', f.label + (f.unit ? ` (${f.unit})` : '')));
+  const reg = el('span', 'reg', `0x${f.reg.toString(16)}${f.bytes > 1 ? '–' + (f.reg + f.bytes - 1).toString(16) : ''}` +
+    (f.bytes === 1 && f.bits < 8 ? ` [${f.shift + f.bits - 1}:${f.shift}]` : '') + (f.help ? ` · ${f.help}` : ''));
+  name.append(reg);
+  let input;
+  if (f.kind === 'bool') {
+    input = el('input'); input.type = 'checkbox';
+    input.onchange = () => { fieldSet(f, edit, input.checked ? 1 : 0); renderValues(); };
+  } else if (f.kind === 'enum') {
+    input = el('select');
+    for (const [v, l] of f.options) input.append(new Option(l, String(v)));
+    input.onchange = () => { fieldSet(f, edit, Number(input.value)); renderValues(); };
+  } else if (f.kind === 'flags') {
+    input = el('div', 'flags');
+    input.boxes = f.options.map(([v, l]) => {
+      const lab = el('label'); const b = el('input'); b.type = 'checkbox'; b.value = v;
+      b.onchange = () => { fieldSet(f, edit, input.boxes.reduce((a, x) => a | (x.checked ? Number(x.value) : 0), 0)); renderValues(); };
+      lab.append(b, l); input.append(lab); return b;
+    });
+  } else {
+    input = el('input');
+    input.type = f.kind === 'hex' ? 'text' : 'number';
+    if (f.kind !== 'hex') { input.min = 0; input.max = Math.min(f.max ?? Infinity, 2 ** f.bits - 1); }
+    input.onchange = () => { fieldSet(f, edit, input.value); renderValues(); };
+  }
+  if (f.readonly) input.disabled = true;
+  row.append(name, input);
+  bound.push({ f, input, row });
+  return row;
+}
+
+function buildFields() {
+  const quick = $('quickFields');
+  for (const k of QUICK) quick.append(fieldRow(BY_KEY[k]));
+  const all = $('allFields');
+  for (const [title, fs] of FIELDS) {
+    all.append(el('h3', '', title));
+    const box = el('div', 'fields');
+    for (const f of fs) box.append(fieldRow(f));
+    all.append(box);
+  }
+}
+
+function renderValues() {
+  if (!edit) return;
+  let changed = 0;
+  for (const { f, input, row } of bound) {
+    const v = fieldGet(f, edit);
+    const diff = page && fieldGet(f, page) !== v;
+    row.classList.toggle('changed', !!diff);
+    row.title = diff ? `sensor has ${fieldGet(f, page)}` : '';
+    if (document.activeElement === input) continue;
+    if (f.kind === 'bool') input.checked = !!v;
+    else if (f.kind === 'flags') input.boxes.forEach(b => { b.checked = !!(v & Number(b.value)); });
+    else input.value = String(v);
+  }
+  if (page) for (let k = 0; k < CFG_SIZE; k++) if (page[k] !== edit[k]) changed++;
+  $('cfgState').textContent = !page ? '' : changed ? `${changed} byte(s) changed, not applied` : 'matches the sensor';
+}
+
+async function applyConfig() {
+  if (demo.on) { page = edit.slice(); renderValues(); return; }
+  const f = await command(T.TOF_CONFIG_SET, new W().bytes(edit), 'apply configuration');
+  if (f && f.type === T.TOF_CONFIG) {
+    const wanted = edit.slice();
+    takeConfig(f.payload);
+    const kept = wanted.every((b, k) => b === page[k]);
+    if (!kept) logLine('the sensor changed some values: the page shows what it kept');
+  } else {
+    fetchConfig();
+  }
+}
+
+async function choosePreset() {
+  const p = Number($('preset').value);
+  if (demo.on) { fieldSet(BY_KEY.fp, edit, PRESET_FP[p]); page = edit.slice(); renderValues(); return; }
+  const f = await command(T.TOF_PRESET, new W().u8(p), 'preset');
+  if (f && f.type === T.TOF_CONFIG) takeConfig(f.payload);
+}
+
+// ---- demo: a synthetic scene through the same decoder ----------------------------------
+// A back wall, a floor, a sphere swinging in front and a box, ray-traced per
+// zone and encoded as real result frames.
+const demo = { on: false, timer: null, fnum: 0, t0: 0 };
+
+function demoScene(ax, ay, t) {
+  const n = Math.hypot(ax, ay, 1), dx = ax / n, dy = ay / n, dz = 1 / n;
+  let best = Infinity, refl = 0;
+  const hit = (d, r) => { if (d > 0 && d < best) { best = d; refl = r; } };
+  hit(2600 / dz, 0.5);                                   // wall at z = 2.6 m
+  if (dy > 0) hit(600 / dy, 0.35);                       // floor 0.6 m below (image y grows downward)
+  const cx = 500 * Math.sin(t * 0.9), cy = -100 + 120 * Math.sin(t * 1.7), cz = 1300, r = 320;
+  const b = dx * cx + dy * cy + dz * cz, c = cx * cx + cy * cy + cz * cz - r * r, disc = b * b - c;
+  if (disc > 0) hit(b - Math.sqrt(disc), 0.9);           // sphere
+  const lo = [-750, -50, 1800], hi = [-350, 600, 2200];  // box on the floor, left
+  let t1 = 0, t2 = Infinity;
+  for (const [o, dd, a, bb] of [[0, dx, lo[0], hi[0]], [0, dy, lo[1], hi[1]], [0, dz, lo[2], hi[2]]]) {
+    if (Math.abs(dd) < 1e-9) { if (o < a || o > bb) t2 = -1; continue; }
+    let u = (a - o) / dd, w = (bb - o) / dd;
+    if (u > w) [u, w] = [w, u];
+    t1 = Math.max(t1, u); t2 = Math.min(t2, w);
+  }
+  if (t1 <= t2 && t2 > 0) hit(t1, 0.7);
+  return [best, refl];
+}
+
+function demoFrames() {
+  const fp = fieldGet(BY_KEY.fp, edit);
+  const [cols, rowsPer, frames] = grid(fp);
+  const rows = rowsPer * frames;
+  const layout = edit[0x2a - CFG_FIRST] & 0x3f;
+  const peaks = layout & 7, rec = recordSize(layout);
+  const mm = fieldGet(BY_KEY.mm, edit);
+  const t = (performance.now() - demo.t0) / 1000;
+  demo.fnum++;
+  for (let sub = 0; sub < frames; sub++) {
+    const body = new Uint8Array(rowsPer * cols * rec);
+    const d = new DataView(body.buffer);
+    for (let y = 0; y < rowsPer; y++) {
+      const row = frames === 2 ? 2 * y + sub : y;
+      for (let x = 0; x < cols; x++) {
+        const [ax, ay] = zoneRay(x, row, cols, rows);
+        const [dist, refl] = demoScene(ax, ay, t);
+        let o = (y * cols + x) * rec;
+        const noise = 40 + Math.random() * 10;
+        if (layout & 16) { d.setUint16(o, noise, true); o += 2; }
+        if (layout & 32) { d.setUint16(o, 12, true); o += 2; }
+        const sig = refl * 4e8 / (dist * dist) * (cols * rows <= 256 ? 4 : 1);
+        for (let k = 0; k < peaks; k++) {
+          const dk = k === 0 ? dist : dist + 400 + 300 * k;   // weaker echoes further out
+          const s = k === 0 ? sig : sig * 0.08 / k;
+          const noisy = dk + (Math.random() - 0.5) * (6 + dk * 0.004);
+          const conf = dk > 11000 || s < 3 ? 0 : Math.min(255, Math.round(8 + 20 * Math.log2(1 + s / 4)));
+          d.setUint16(o, conf ? Math.round(noisy * (mm ? 1 : 4)) : 0, true);
+          body[o + 2] = conf;
+          o += 3;
+          if (layout & 8) { d.setUint16(o, Math.min(65535, Math.round(s)), true); o += 2; }
+        }
+      }
+    }
+    const footer = new Uint8Array(12);
+    footer[9] = mm ? 1 : 0; footer[10] = 0xf7; footer[11] = 0xe0;
+    const payload = 12 + body.length + 12;
+    const hdr = new Uint8Array(29), hv = new DataView(hdr.buffer);
+    hv.setUint32(0, Math.round(performance.now() * 1000) >>> 0, true);
+    hdr[4] = 0; hv.setUint32(5, Math.round(performance.now() * 125) >>> 0, true);
+    hdr[9] = 0x10 | fp; hdr[10] = layout | (sub ? 0x40 : 0); hv.setUint16(11, payload, true);
+    hv.setUint32(13, demo.fnum, true); hdr[17] = 31; hdr[18] = 30; hdr[19] = 31;
+    hv.setFloat32(25, 1, true);
+    onStream(T.TOF_HDR, hdr);
+    const all = new Uint8Array(body.length + 12);
+    all.set(body); all.set(footer, body.length);
+    for (let off = 0; off < all.length; off += 224) {
+      const chunk = all.subarray(off, off + 224);
+      const p = new Uint8Array(2 + chunk.length);
+      p[0] = off & 0xff; p[1] = off >> 8; p.set(chunk, 2);
+      onStream(T.TOF_DATA, p);
+    }
+    onStream(T.TOF_END, new Uint8Array([0, all.length & 0xff, all.length >> 8, 0, 0, 0, 0]));
+  }
+}
+
+function startDemo() {
+  if (writer) return;
+  demo.on = true; demo.t0 = performance.now();
+  if (!page) { page = defaultPage(); fieldSet(BY_KEY.fp, page, 0); edit = page.slice(); renderValues(); }
+  $('demo').classList.add('on');
+  const tick = () => {
+    if (!demo.on) return;
+    demoFrames();
+    demo.timer = setTimeout(tick, Math.max(33, fieldGet(BY_KEY.period, edit) || 33));
+  };
+  tick();
+  showState();
+  setEnabled();
+  setTimeout(resetView, 50);
+}
+
+function stopDemo() {
+  if (!demo.on) return;
+  demo.on = false;
+  clearTimeout(demo.timer);
+  $('demo').classList.remove('on');
+  showState();
+  setEnabled();
+}
+
+// ---- export ----------------------------------------------------------------------------
+function download(name, text) {
+  const a = el('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+  a.download = name;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+
+function savePly() {
+  if (!latest) return;
+  const v = view(), m = latest;
+  const pts = points(m, v);
+  const [lo, hi] = colorRange(m, v);
+  const lines = pts.map(p => {
+    const [r, g, b] = TURBO[colorIndex(zoneValue(m, p.i, v.peak, v.colorBy), lo, hi, v.colorBy)];
+    return `${p.x.toFixed(1)} ${p.y.toFixed(1)} ${p.z.toFixed(1)} ${r} ${g} ${b}`;
+  });
+  download(`tof_${m.cols}x${m.rows}_${m.fnum}.ply`, ['ply', 'format ascii 1.0', `comment TMF8829 frame ${m.fnum}, mm`,
+    `element vertex ${pts.length}`, 'property float x', 'property float y', 'property float z',
+    'property uchar red', 'property uchar green', 'property uchar blue', 'end_header', ...lines].join('\n') + '\n');
+}
+
+function saveCsv() {
+  if (!latest) return;
+  const m = latest;
+  const head = ['x', 'y'];
+  for (let k = 0; k < m.peaks; k++) head.push(`d${k + 1}_mm`, `conf${k + 1}`, ...(m.signal ? [`signal${k + 1}`] : []));
+  if (m.noise) head.push('noise');
+  if (m.xtalk) head.push('xtalk');
+  const rows = [head.join(',')];
+  for (let i = 0; i < m.n; i++) {
+    const r = [i % m.cols, Math.floor(i / m.cols)];
+    for (let k = 0; k < m.peaks; k++) r.push(m.dist[k][i], m.conf[k][i], ...(m.signal ? [m.signal[k][i]] : []));
+    if (m.noise) r.push(m.noise[i]);
+    if (m.xtalk) r.push(m.xtalk[i]);
+    rows.push(r.join(','));
+  }
+  download(`tof_${m.cols}x${m.rows}_${m.fnum}.csv`, rows.join('\n') + '\n');
+}
+
+// ---- UI state -----------------------------------------------------------------------
+function setEnabled() {
+  const conn = !!writer;
+  const ready = conn && (sensor.state === 2 || sensor.state === 3);
+  for (const e of document.querySelectorAll('[data-needs-conn]')) e.disabled = !conn;
+  for (const e of document.querySelectorAll('[data-needs-sensor]')) e.disabled = !(ready || demo.on);
+  $('start').disabled = !ready || sensor.state === 3;
+  $('stop').disabled = !conn || sensor.state !== 3;
+  $('powerOn').disabled = !conn || sensor.state === 1 || ready;
+  $('powerOff').disabled = !conn || sensor.state <= 0;
+  $('connect').textContent = conn ? 'Disconnect' : 'Connect';
+  $('connect').className = conn ? '' : 'primary';
+  $('demo').disabled = conn;
+}
+
+function setConn(kind, text) { const c = $('conn'); c.className = `pill ${kind}`; c.textContent = text; }
+
+const LOG_MAX = 20000;
+function logText(s) {
+  const log = $('log');
+  const atEnd = log.scrollTop + log.clientHeight >= log.scrollHeight - 4;
+  log.textContent = (log.textContent + s.replace(/\r/g, '')).slice(-LOG_MAX);
+  if (atEnd) log.scrollTop = log.scrollHeight;
+}
+function logLine(s) { logText(`\n[page] ${s}\n`); }
+
+function $(id) { return document.getElementById(id); }
+function el(tag, cls = '', text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text !== undefined) e.textContent = text; return e; }
+
+const SETTINGS = ['colorBy', 'minConf', 'autoRange', 'rangeLo', 'rangeHi', 'patch', 'pcCorr', 'flipX', 'flipY', 'drawMode', 'busKhz', 'autoOn', 'histRef'];
+function saveSettings() {
+  try {
+    localStorage.setItem('tof3d', JSON.stringify(Object.fromEntries(SETTINGS.map(k => [k, $(k).type === 'checkbox' ? $(k).checked : $(k).value]))));
+  } catch (e) {}
+}
+function loadSettings() {
+  try {
+    const s = JSON.parse(localStorage.getItem('tof3d') || '{}');
+    for (const k of SETTINGS) if (k in s) { if ($(k).type === 'checkbox') $(k).checked = s[k]; else $(k).value = s[k]; }
+  } catch (e) {}
+}
+
+// ---- wiring ----------------------------------------------------------------------------
+for (const [v, l] of PRESETS) $('preset').append(new Option(l, String(v)));
+buildFields();
+loadSettings();
+setEnabled();
+if (!('serial' in navigator)) {
+  $('unsupported').style.display = 'inline';
+  $('connect').disabled = true;
+} else {
+  navigator.serial.addEventListener('disconnect', e => { if (e.target === port) disconnect('board unplugged'); });
+}
+$('connect').onclick = () => (writer ? disconnect() : connect());
+$('demo').onclick = () => (demo.on ? stopDemo() : startDemo());
+$('powerOn').onclick = () => powerOn(1);
+$('reload').onclick = () => powerOn(2);
+$('powerOff').onclick = async () => { await command(T.TOF_POWER, new W().u8(0), 'sensor off'); pollInfo(); };
+$('start').onclick = async () => { await command(T.TOF_MEASURE, new W().u8(1), 'start'); pollInfo(); };
+$('stop').onclick = async () => { await command(T.TOF_MEASURE, new W().u8(0), 'stop'); pollInfo(); };
+$('preset').onchange = choosePreset;
+const sendOptions = () => command(T.TOF_OPTIONS, new W().u16(Number($('busKhz').value)).u8($('clkCorr').checked ? 1 : 0), 'options');
+$('busKhz').onchange = () => { saveSettings(); sendOptions(); };
+$('clkCorr').onchange = sendOptions;
+$('cfgApply').onclick = applyConfig;
+$('cfgRead').onclick = () => (demo.on ? null : fetchConfig());
+$('cfgRevert').onclick = () => { if (page) { edit = page.slice(); renderValues(); } };
+$('cfgDefaults').onclick = () => { edit = defaultPage(); if (!page) page = edit.slice(); renderValues(); };
+$('resetView').onclick = resetView;
+$('savePly').onclick = savePly;
+$('saveCsv').onclick = saveCsv;
+for (const k of SETTINGS) $(k).addEventListener('change', () => { saveSettings(); scheduleDraw(); });
+for (const k of ['peak', 'rangeLo', 'rangeHi', 'minConf', 'patch']) $(k).addEventListener('input', scheduleDraw);
+$('histRef').addEventListener('change', drawHist);
+$('cmap').addEventListener('pointermove', e => { const z = zoneAt(e); if (z !== hoverZone) { hoverZone = z; showZone(z); scheduleDraw(); } });
+$('cmap').addEventListener('pointerleave', () => { hoverZone = -1; showZone(selectedZone); scheduleDraw(); });
+$('cmap').addEventListener('click', e => { selectedZone = zoneAt(e); showZone(selectedZone); scheduleDraw(); if (hist.zones.size) drawHist(); });
+$('cmdForm').onsubmit = e => { e.preventDefault(); const v = $('cmd').value; if (v) { sendText(v); $('cmd').value = ''; } };
+window.addEventListener('resize', scheduleDraw);
+scheduleDraw();
+</script>
+</body>
+</html>
