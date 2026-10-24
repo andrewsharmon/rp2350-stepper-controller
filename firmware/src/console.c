@@ -17,6 +17,7 @@
 #include "cam_store.h"
 #include "led.h"
 #include "tof.h"
+#include "tof_overlay.h"
 
 #define LINE_MAX      160
 #define MAX_TELEM_HZ  1000  // one line per motion tick
@@ -85,6 +86,17 @@ static const char help_text[] =
     "  tof get [reg]         configuration page (registers 0x22-0xdf)   tof set <reg> <value>\n"
     "  tof i2c <kHz>         bus speed, 100-1000 (default 1000)    tof clk on|off  clock correction\n"
     "  tof ?                 sensor status\n"
+    "  tof map on|off|?      ToF map overlay: the nearest return in a band across the middle of the\n"
+    "                        sensor's view drives the row of axes (starts the sensor itself)\n"
+    "  tof map range <near_mm> <far_mm>   distances mapped (default 150 300)\n"
+    "  tof map steps <at_near> <at_far>   axis positions at those ends (default 1000 -1000)\n"
+    "  tof map order <ax,...>|board   axes left to right across the band (board: the connector\n"
+    "                        row, single_sh_proto 5,6,7,8,9,10,1,2,3,4)\n"
+    "  tof map axes <n>      axes 1-n in the board's row order    tof map mirror on|off  right to left\n"
+    "  tof map band <height%> [width%]    band size, centred (default 25 100)\n"
+    "  tof map smooth <ms>   distance smoothing (100)   tof map deadband <steps>  (4)\n"
+    "  tof map iter <k> | period <ms> | res <r> | conf <n>   sensor settings for the map\n"
+    "                        (default 10 k iterations, 20 ms, 16x16, confidence 1)\n"
     "  echo on|off           echo typed characters and show the prompt (off for scripts)\n"
     "  stress on|off         every axis sweeps its own speed wave\n"
     "  ?                     status\n"
@@ -278,8 +290,107 @@ static void tof_set_bytes(uint32_t off, uint32_t len, uint32_t v) {
     tof_report(tof_config_write(page));
 }
 
+// tof map ... (argv[0] is "map").
+static void tof_map_command(int argc, char **argv) {
+    tof_overlay_cfg_t *c = tof_overlay_cfg();
+    const char *sub = argc > 1 ? argv[1] : "?";
+    float a = 0.0f, b = 0.0f;
+    bool num1 = argc > 2 && parse_float(argv[2], &a);
+    bool num2 = num1 && argc > 3 && parse_float(argv[3], &b);
+    bool sensor = false;
+    if (strcmp(sub, "on") == 0 && argc == 2) {
+        const char *err = app_start_tof_map();
+        if (err)
+            printf("tof map: %s\n", err);
+        else if (!tof_overlay_running())
+            printf("tof map: setting up the sensor\n");
+    } else if (strcmp(sub, "off") == 0 && argc == 2) {
+        if (tof_overlay_active())
+            printf("tof map off\n");
+        tof_overlay_stop(NULL);
+    } else if (strcmp(sub, "?") == 0) {
+        tof_overlay_print_status();
+    } else if (strcmp(sub, "range") == 0 && argc == 4 && num2 && a >= 10.0f && a <= 10000.0f &&
+               b >= 10.0f && b <= 10000.0f && a != b) {
+        c->map.near_mm = a;
+        c->map.far_mm = b;
+    } else if (strcmp(sub, "steps") == 0 && argc == 4 && num2) {
+        c->map.steps_near = a;
+        c->map.steps_far = b;
+    } else if (strcmp(sub, "axes") == 0 && argc == 3 && num1 && a >= 1.0f && a <= NUM_MOTORS &&
+               a <= TOF_MAP_MAX_AXES) {
+        tof_overlay_board_order((uint8_t)a);
+    } else if (strcmp(sub, "order") == 0 && argc == 3 && strcmp(argv[2], "board") == 0) {
+        tof_overlay_board_order(NUM_MOTORS);
+    } else if (strcmp(sub, "order") == 0 && argc == 3) {
+        // "5,6,7,...": each axis at most once.
+        uint8_t order[TOF_MAP_MAX_AXES];
+        uint32_t n = 0, seen = 0;
+        const char *p = argv[2];
+        while (*p) {
+            char *end;
+            long ax = strtol(p, &end, 10);
+            if (end == p || ax < 1 || ax > NUM_MOTORS || (seen & (1u << (ax - 1))) || n == TOF_MAP_MAX_AXES ||
+                (*end && *end != ',')) {
+                printf("tof map order: axes 1-%d, comma-separated, each once\n", NUM_MOTORS);
+                return;
+            }
+            seen |= 1u << (ax - 1);
+            order[n++] = (uint8_t)(ax - 1);
+            p = *end ? end + 1 : end;
+        }
+        if (n == 0) {
+            printf("tof map order: axes 1-%d, comma-separated, each once\n", NUM_MOTORS);
+            return;
+        }
+        memcpy(c->map.order, order, n);
+        c->map.axes = (uint8_t)n;
+    } else if (strcmp(sub, "mirror") == 0 && argc == 3) {
+        c->map.mirror = strcmp(argv[2], "off") != 0;
+    } else if (strcmp(sub, "band") == 0 && (argc == 3 || argc == 4) && num1 && (argc == 3 || num2) &&
+               a > 0.0f && a <= 100.0f && (argc == 3 || (b > 0.0f && b <= 100.0f))) {
+        c->map.band_height = a / 100.0f;
+        if (argc == 4)
+            c->map.band_width = b / 100.0f;
+    } else if (strcmp(sub, "smooth") == 0 && argc == 3 && num1 && a >= 0.0f && a <= 5000.0f) {
+        c->smooth_ms = (uint16_t)a;
+    } else if (strcmp(sub, "deadband") == 0 && argc == 3 && num1 && a >= 0.0f) {
+        c->deadband = a;
+    } else if (strcmp(sub, "conf") == 0 && argc == 3 && num1 && a >= 1.0f && a <= 255.0f) {
+        c->min_conf = (uint8_t)a;
+        if (tof_overlay_active())
+            printf("tof map: confidence applies from the next start\n");
+    } else if ((strcmp(sub, "iter") == 0 || strcmp(sub, "period") == 0) && argc == 3 && num1 && a >= 1.0f &&
+               a <= 65535.0f) {
+        if (sub[0] == 'i')
+            c->kilo_iterations = (uint16_t)a;
+        else
+            c->period_ms = (uint16_t)a;
+        sensor = true;
+    } else if (strcmp(sub, "res") == 0 && argc == 3) {
+        uint32_t k = 0;
+        while (k < sizeof tof_presets / sizeof *tof_presets && strcmp(argv[2], tof_presets[k].name) != 0)
+            k++;
+        if (k == sizeof tof_presets / sizeof *tof_presets) {
+            printf("tof map res: 8 16 32 48, 8lr, 8ha 16ha 32ha 48ha\n");
+            return;
+        }
+        c->preset = tof_presets[k].preset;
+        sensor = true;
+    } else {
+        printf("? tof map %s (type help)\n", sub);
+        return;
+    }
+    if (sensor && tof_overlay_running())
+        tof_report(tof_overlay_apply_sensor());
+}
+
 static void tof_command(int argc, char **argv) {
     const char *sub = argc > 1 ? argv[1] : "?";
+    if (strcmp(sub, "map") == 0) {
+        tof_map_command(argc - 1, argv + 1);
+        return;
+    }
     char *end;
     long a = argc > 2 ? strtol(argv[2], &end, 0) : 0;
     bool num = argc > 2 && *end == '\0';

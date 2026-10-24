@@ -29,3 +29,5 @@ void app_set_boot_program(int k);   // built-in program k at power-up (save to k
 // NULL, or why not.
 const char *app_start_program(int k);
 void app_stop_playing(void);        // stop the show or program (and any queued one)
+// Stop what plays and start the ToF map overlay (tof_overlay.h). NULL, or why not.
+const char *app_start_tof_map(void);

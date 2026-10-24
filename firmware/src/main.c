@@ -3,8 +3,9 @@
 // Core 1 (control.c) runs the 1 kHz trajectory tick for every axis and
 // streams sine-PWM to the PIO state machines through DMA rings. Core 0 (this
 // file) sets everything up, then runs the USB console (console.c), the
-// status LEDs, the stress test, the ToF sensor on the Qwiic port (tof.c)
-// and the core 1 watchdog.
+// status LEDs, the stress test, the ToF sensor on the Qwiic port (tof.c),
+// the ToF map overlay that drives the actuators from it (tof_overlay.c) and
+// the core 1 watchdog.
 //
 // Standalone mode (standalone.h): the buttons step through a list of the
 // built-in motion programs (programs.h) followed by the stored shows. Btn1
@@ -32,6 +33,7 @@
 #include "led.h"
 #include "i2c_target.h"
 #include "tof.h"
+#include "tof_overlay.h"
 #include "player.h"
 #include "programs.h"
 #include "show_store.h"
@@ -95,6 +97,7 @@ void app_set_stress(bool on) {
     if (on) {
         player_stop();
         pending_entry = -1;
+        tof_overlay_stop("stress test");
         control_snapshot_t snap;
         control_snapshot(&snap);
         for (int i = 0; i < NUM_MOTORS; i++)
@@ -170,6 +173,7 @@ static void start_entry(int e) {
 // Stop whatever is playing; start entry e once the axes are at rest.
 static void queue_entry(int e) {
     app_set_stress(false);
+    tof_overlay_stop(entry_name(e));
     player_stop();
     pending_entry = selected_entry = e;
 }
@@ -191,6 +195,14 @@ const char *app_start_program(int k) {
 void app_stop_playing(void) {
     player_stop();
     pending_entry = -1;
+}
+
+const char *app_start_tof_map(void) {
+    if (!control_outputs_on)
+        return "outputs are stopped (c to clear)";
+    app_set_stress(false);
+    app_stop_playing();
+    return tof_overlay_start();
 }
 
 static void on_button(int button) {
@@ -316,6 +328,8 @@ void app_print_status(void) {
         tof_info_t t;
         tof_get_info(&t);
         printf("  tof %s", tof_state_name(t.state));
+        if (tof_overlay_active())
+            printf(", tof map %s", tof_overlay_state());
     }
 
     double span = last_us ? (double)(now - last_us) : 0.0;
@@ -505,12 +519,14 @@ int main(void) {
         player_poll(now);
         i2c_target_poll();
         tof_poll(now);
+        tof_overlay_poll(now);
         if (adc_monitor_check())
             printf("ADC FIFO overflow: monitor restarted\n");
 
         bool on = control_outputs_on;
         if (was_on && !on) {
             stress = false;
+            tof_overlay_stop("stop latched");
             printf("STOP: %s, motor outputs off (c to clear)\n",
                    ladder_level_name(control_ladder.stop_cause));
         }

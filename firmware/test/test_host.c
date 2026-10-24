@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c ../src/programs.c ../src/tof_frame.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c ../src/programs.c ../src/tof_frame.c ../src/tof_map.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -25,6 +25,7 @@
 #include "cam_store.h"
 #include "trig.h"
 #include "tof_frame.h"
+#include "tof_map.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
 #define SPAN (PERIOD_CLOCKS - 4 * HBRIDGE_SEGMENT_OVERHEAD)
@@ -1167,6 +1168,64 @@ static void test_tof(void) {
           "summary %u/%u %u-%u", sum.valid, sum.zones, sum.min_raw, sum.max_raw);
 }
 
+static void test_tof_map(void) {
+    // Zone collection: a 32x32 measurement comes as two sub-frames of 16
+    // rows, even rows first; zones with no confidence read 0.
+    static uint16_t grid[32 * 32];
+    uint8_t rec[2 * 3] = {0x64, 0x00, 5, 0x10, 0x27, 0};   // zone 0: 100, zone 1: no target
+    tof_zones_add(grid, 32, 32, 2, 1, 32 * 3 + 4, rec, sizeof rec, 1, 1);
+    CHECK(grid[7 * 32 + 4] == 100 && grid[7 * 32 + 5] == 0, "sub-frame 1 row 3 (grid row 7) col 4 = %u, %u",
+          grid[7 * 32 + 4], grid[7 * 32 + 5]);
+    tof_zones_add(grid, 32, 32, 2, 1, 32 * 16, rec, sizeof rec, 1, 1);   // past the grid: ignored
+    rec[2] = 3;
+    tof_zones_add(grid, 32, 32, 2, 0, 0, rec, 3, 1, 4);
+    CHECK(grid[0] == 0, "confidence 3 under 4 kept: %u", grid[0]);
+
+    // 16x16, ten axes over the middle quarter (rows 6-9), 0.25 mm units.
+    tof_map_cfg_t c;
+    tof_map_defaults(&c, 10);
+    uint32_t c0, c1, r0, r1;
+    tof_map_band(&c, 16, 16, &c0, &c1, &r0, &r1);
+    CHECK(c0 == 0 && c1 == 15 && r0 == 6 && r1 == 9, "band cols %u-%u rows %u-%u", c0, c1, r0, r1);
+    tof_map_band(&c, 8, 8, &c0, &c1, &r0, &r1);
+    CHECK(r0 == 3 && r1 == 4, "8x8 band rows %u-%u", r0, r1);
+    static uint16_t z[16 * 16];
+    memset(z, 0, sizeof z);
+    for (uint32_t col = 0; col < 16; col++)
+        z[0 * 16 + col] = 4 * 100;            // row 0, outside the band: ignored
+    z[7 * 16 + 0] = 4 * 200;                  // axis 1 (columns 0-1): 200 mm
+    z[8 * 16 + 1] = 4 * 180;                  //   nearer return in its slice wins
+    z[6 * 16 + 2] = 4 * 100;                  // axis 2 (column 2): under the range, clamped
+    z[9 * 16 + 15] = 4 * 1000;                // axis 10 (columns 14-15): past it, clamped
+    float mm[TOF_MAP_MAX_AXES];
+    tof_map_distances(&c, z, 16, 16, 0.25f, mm);
+    CHECK(mm[0] == 180.0f && mm[1] == 150.0f && mm[9] == 300.0f, "axes 1, 2, 10: %f %f %f", (double)mm[0],
+          (double)mm[1], (double)mm[9]);
+    CHECK(mm[4] == 300.0f, "empty slice reads %f, not far", (double)mm[4]);
+    CHECK(tof_map_steps(&c, 150.0f) == 1000.0f && tof_map_steps(&c, 300.0f) == -1000.0f &&
+              fabsf(tof_map_steps(&c, 225.0f)) < 1e-3f && tof_map_steps(&c, 50.0f) == 1000.0f,
+          "steps %f %f %f", (double)tof_map_steps(&c, 150.0f), (double)tof_map_steps(&c, 225.0f),
+          (double)tof_map_steps(&c, 300.0f));
+    c.mirror = true;
+    tof_map_distances(&c, z, 16, 16, 0.25f, mm);
+    CHECK(mm[9] == 180.0f && mm[0] == 300.0f, "mirrored: axis 10 %f", (double)mm[9]);
+
+    // Defaults lay axes out in order; distances come per slice.
+    for (uint32_t k = 0; k < 10; k++)
+        CHECK(c.order[k] == k, "default order: slice %u is axis %u", k, c.order[k] + 1);
+
+    // More axes than columns: every axis still gets a column.
+    c.mirror = false;
+    memset(z, 0, sizeof z);
+    for (uint32_t col = 0; col < 8; col++)
+        z[3 * 8 + col] = (uint16_t)(4 * (160 + 10 * col));
+    tof_map_distances(&c, z, 8, 8, 0.25f, mm);
+    for (uint32_t i = 1; i < 10; i++)
+        CHECK(mm[i] >= mm[i - 1] && mm[i] >= 160.0f, "8 columns, axis %u: %f after %f", i + 1, (double)mm[i],
+              (double)mm[i - 1]);
+    CHECK(mm[0] == 160.0f && mm[9] == 230.0f, "8 columns ends %f %f", (double)mm[0], (double)mm[9]);
+}
+
 int main(void) {
     test_encoder();
     test_phase_inc();
@@ -1179,6 +1238,7 @@ int main(void) {
     test_cam();
     test_trig();
     test_tof();
+    test_tof_map();
     test_motion();
     test_pvt();
     test_programs();

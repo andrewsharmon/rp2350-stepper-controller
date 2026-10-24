@@ -96,3 +96,23 @@ void tof_summary_add(tof_summary_t *s, const uint8_t *records, size_t n, uint8_t
             s->max_raw = d;
     }
 }
+
+void tof_zones_add(uint16_t *grid, uint32_t cols, uint32_t rows, uint32_t frames, uint32_t sub, uint32_t first,
+                   const uint8_t *records, size_t n, uint8_t layout, uint8_t min_conf) {
+    uint32_t size = tof_record_size(layout);
+    if (size == 0 || (layout & TOF_LAYOUT_PEAKS) == 0 || cols == 0)
+        return;
+    if (min_conf < 1)
+        min_conf = 1;
+    uint32_t skip = (layout & TOF_LAYOUT_NOISE ? 2 : 0) + (layout & TOF_LAYOUT_XTALK ? 2 : 0);
+    uint32_t z = first;
+    for (size_t at = 0; at + size <= n; at += size, z++) {
+        const uint8_t *p = records + at + skip;
+        uint32_t y = z / cols;
+        uint32_t row = frames == 2 ? 2 * y + sub : y;
+        if (row >= rows)
+            return;
+        uint16_t d = get16(p);
+        grid[row * cols + z % cols] = p[2] >= min_conf ? (d ? d : 1) : 0;
+    }
+}

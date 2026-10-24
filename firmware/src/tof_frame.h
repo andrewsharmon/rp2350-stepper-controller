@@ -58,3 +58,10 @@ typedef struct {
 
 void tof_summary_reset(tof_summary_t *s);
 void tof_summary_add(tof_summary_t *s, const uint8_t *records, size_t n, uint8_t layout);
+
+// First peak of each zone into `grid` (row by row, cols x rows, every
+// sub-frame's rows in place), 0 where its confidence is under `min_conf`
+// (at least 1). records[0] is zone `first` of the frame; `n` bytes of
+// whole records. Zones past the grid are ignored.
+void tof_zones_add(uint16_t *grid, uint32_t cols, uint32_t rows, uint32_t frames, uint32_t sub, uint32_t first,
+                   const uint8_t *records, size_t n, uint8_t layout, uint8_t min_conf);

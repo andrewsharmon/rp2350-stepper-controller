@@ -98,7 +98,7 @@ cd firmware/test
 cc -std=c11 -O1 -Wall -Wextra -DCONFIG_HOST_TEST -I../src test_host.c ../src/hbridge_encode.c \
    ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c \
    ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c \
-   ../src/programs.c ../src/tof_frame.c -lm -o test_host && ./test_host
+   ../src/programs.c ../src/tof_frame.c ../src/tof_map.c -lm -o test_host && ./test_host
 ```
 
 ## ToF sensor (LightRanger 14 Click)
@@ -126,6 +126,42 @@ tof ?             tof get            tof set 0x53 10    tof stop / tof off
 
 Not yet run against a real sensor: the register sequences follow ams's reference
 driver, and the page was checked with its synthetic frames only.
+
+### ToF map: the sensor drives the actuators
+
+`tof map on` makes the row of linear actuators follow what the sensor sees in a
+band across the middle of its field of view (the middle quarter of the rows, the
+full width). The band is split left to right into one slice per axis, in the
+board's row order (single_sh_proto's connectors run 5 6 7 8 9 10 1 2 3 4 from
+the far end to the USB end), and each axis follows the nearest return in its
+slice: 150 mm puts it at +1000 full
+steps, 300 mm at -1000, and nearer or farther clamps to the ends. A slice with
+nothing in it reads as far. Each axis's distance is smoothed (100 ms), and a new
+position move goes out when the target changes by 4 steps or more, so the axis's
+own limits and profile shape the motion.
+
+Starting switches the sensor on if needed, loads the 16x16 preset, and sets
+10 k iterations (the preset's 586 k is for the full range) with a 20 ms period.
+Then it measures with no output, unless a host or the console is already
+streaming; `tools/web/tof.html` can keep watching. It stops on `tof map off`,
+an e-stop, the sensor stopping or failing, a program, show or stress test
+starting, or a button starting one. Position 0 is the power-up position, as
+for the programs, so power up mid-stroke (or zero there with `z`). The fixed-time
+profiles (`cosine`, `quintic`) restart a segment on every retarget; use `scurve`
+(the default), `smooth` or `trap`.
+
+```
+tof map on            tof map off           tof map ?      (band in zones, live mm and targets)
+tof map range 150 300                       tof map steps 1000 -1000    (swap to reverse)
+tof map order 1,2,3,4,5,6,7,8,9,10        tof map order board   (axes left to right)
+tof map axes 5        tof map mirror on     tof map band 25 100   (height %, width %)
+tof map smooth 100    tof map deadband 4    tof map iter 10   tof map period 20   tof map res 16
+```
+
+Settings aren't saved to flash yet. On single_sh_proto with the LightRanger 14
+and ten actuators it ran at 49 measurements a second (16x16, 10 k iterations,
+20 ms), with about 70 of the 256 zones returning; axes under an object at
+~210 mm moved to about +150 steps while the rest went to the far end.
 
 ## Pico 2 bench setup
 

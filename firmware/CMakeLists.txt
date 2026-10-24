@@ -41,6 +41,8 @@ add_executable(stepper
     src/tmf8829.c
     src/tof_frame.c
     src/tof.c
+    src/tof_map.c
+    src/tof_overlay.c
     third_party/tmf8829/tmf8829_image.c
 )
 target_include_directories(stepper PRIVATE ${CMAKE_CURRENT_LIST_DIR}/third_party/tmf8829)

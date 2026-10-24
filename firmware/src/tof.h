@@ -14,8 +14,9 @@
 // must be high.
 //
 // Each frame goes out as it is read: as binary protocol frames
-// (protocol.h, TOF_*) when a host started the measurement, or as one
-// summary line per measurement when the console did.
+// (protocol.h, TOF_*) when a host started the measurement, as one summary
+// line per measurement when the console did, or nowhere (the ToF map,
+// tof_overlay.h, reads them through the listener).
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -36,7 +37,7 @@ typedef enum {
     TOF_ERR_BUS,          // repeated bus errors while measuring
 } tof_error_t;
 
-typedef enum { TOF_STREAM_TEXT, TOF_STREAM_BINARY } tof_stream_t;
+typedef enum { TOF_STREAM_TEXT, TOF_STREAM_BINARY, TOF_STREAM_NONE } tof_stream_t;
 
 #define TOF_BUS_KHZ_DEFAULT 1000
 
@@ -49,6 +50,7 @@ typedef struct {
     uint32_t bus_khz;
     bool clock_correction;
     bool binary;            // frames go out as protocol frames
+    tof_stream_t stream;
     uint8_t preset;         // last preset loaded (0: none yet)
     uint8_t download_pct;
     uint32_t frames, bad_frames, bus_errors;
@@ -68,6 +70,20 @@ const char *tof_preset(uint8_t preset);
 const char *tof_config_write(const uint8_t page[TMF8829_CFG_SIZE]);
 const char *tof_set_bus_khz(uint32_t khz);  // 100-1000
 void tof_set_clock_correction(bool on);
+
+// One whole measurement, for the listener: the first peak of each zone,
+// row by row, 0 where there is no target; distances in units of unit_mm.
+typedef struct {
+    uint32_t number;
+    uint32_t cols, rows;
+    float unit_mm;
+    const uint16_t *dist;
+} tof_measurement_t;
+typedef void (*tof_listener_t)(const tof_measurement_t *m);
+
+// Called from tof_poll after each whole measurement, whatever the stream
+// (NULL: none). Zones under `min_conf` confidence count as no target.
+void tof_set_listener(tof_listener_t fn, uint8_t min_conf);
 
 // The configuration page as last read back (valid once idle).
 const uint8_t *tof_config(void);

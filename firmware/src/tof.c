@@ -49,6 +49,12 @@ static struct {
 } fr;
 static tof_summary_t summary;
 
+// Whole measurements for the listener: first peak per zone.
+static uint16_t zones[48 * 32];
+static uint32_t zone_subs;   // sub-frames of the measurement read whole
+static tof_listener_t listener;
+static uint8_t listener_conf;
+
 static const char *const state_names[] = {"off", "starting", "idle", "measuring", "error"};
 static const char *const error_names[] = {
     "none",
@@ -297,6 +303,12 @@ void tof_set_clock_correction(bool on) {
     tof_clock_reset(&clk);
 }
 
+void tof_set_listener(tof_listener_t fn, uint8_t min_conf) {
+    listener = fn;
+    listener_conf = min_conf;
+    zone_subs = 0;
+}
+
 const uint8_t *tof_config(void) {
     return config;
 }
@@ -352,8 +364,10 @@ static void frame_begin(uint32_t now) {
         tof_clock_add(&clk, host_us, get32(fr.hdr + 1), TMF8829_TICKS_PER_MS);
         uint32_t sub, count, cols, rows;
         frame_position(&sub, &count, &cols, &rows);
-        if (sub == 0)
+        if (sub == 0) {
             tof_summary_reset(&summary);
+            zone_subs = 0;
+        }
     }
     if (stream == TOF_STREAM_BINARY)
         protocol_send_tof_header(host_us, fr.hdr, clock_correction ? clk.ratio : 1.0f);
@@ -385,8 +399,23 @@ static void frame_end(uint32_t now) {
         frame_read_us = now - fr.start_us;
     if (stream == TOF_STREAM_BINARY)
         protocol_send_tof_end(eof ? 0 : 1, fr.offset, now - fr.start_us);
-    else if (fr.results && eof)
+    else if (stream == TOF_STREAM_TEXT && fr.results && eof)
         print_summary(now);
+    if (fr.results && eof && listener) {
+        uint32_t sub, count, cols, rows;
+        frame_position(&sub, &count, &cols, &rows);
+        zone_subs |= 1u << sub;
+        if (sub + 1 == count && zone_subs == (1u << count) - 1) {
+            tof_measurement_t m = {
+                .number = get32(&HDR(4)),
+                .cols = cols,
+                .rows = rows,
+                .unit_mm = fr.footer[9] & TOF_FOOTER_MM ? 1.0f : 0.25f,
+                .dist = zones,
+            };
+            listener(&m);
+        }
+    }
     fifo_more = true;
 }
 
@@ -412,6 +441,12 @@ static void frame_step(uint32_t now) {
         if (clock_correction)
             tof_correct_distances(buf, in_body, fr.layout, clk.ratio);
         tof_summary_add(&summary, buf, in_body, fr.layout);
+        if (listener && fr.record) {
+            uint32_t sub, count, cols, rows;
+            frame_position(&sub, &count, &cols, &rows);
+            tof_zones_add(zones, cols, rows, count, sub, fr.offset / fr.record, buf, in_body, fr.layout,
+                          listener_conf);
+        }
     }
     for (uint32_t k = in_body; k < n; k++)
         fr.footer[fr.offset + k - fr.body] = buf[k];
@@ -475,6 +510,7 @@ void tof_get_info(tof_info_t *o) {
     o->bus_khz = bus_khz;
     o->clock_correction = clock_correction;
     o->binary = stream == TOF_STREAM_BINARY;
+    o->stream = stream;
     o->preset = preset;
     o->download_pct = state == TOF_BOOTING ? tmf8829_download_pct(&dev) : state == TOF_OFF ? 0 : 100;
     o->frames = frames;
