@@ -5,6 +5,7 @@
 
 #include "pico/stdlib.h"
 
+#include "board_pins.h"
 #include "control.h"
 #include "led.h"
 #include "programs.h"
@@ -36,7 +37,9 @@ static uint32_t post(control_cmd_t *c) {
 
 static show_point_t point(uint32_t t, uint64_t i) {
     const show_track_t *tr = &show.track[t];
-    return prog ? program_point(prog, tr->channel, NUM_MOTORS, i) : show_axis_point(&show, tr, i);
+    // Programs are patterns along the row: pass the axis's place in it.
+    return prog ? program_point(prog, board_row_slot(tr->channel, NUM_MOTORS), NUM_MOTORS, i)
+                : show_axis_point(&show, tr, i);
 }
 
 static void finish(void) {
