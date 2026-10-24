@@ -16,7 +16,7 @@ void config_defaults(config_t *c) {
         a->profile = 1;  // scurve
         a->jerk_ms = 30;
         a->drive = (config_drive_t){
-            .amp_low = 0.40f, .amp_high = 0.60f, .amp_hold = 0.25f,
+            .amp_low = 0.40f, .amp_high = 0.48f, .amp_hold = 0.25f,
             .low_speed = 300.0f, .high_speed = 1600.0f, .flags = 0,
         };
 #ifdef BOARD_NESTED_MOTOR_PAIRS

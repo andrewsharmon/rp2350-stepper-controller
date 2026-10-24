@@ -56,6 +56,15 @@
 //   0x63 VLEADER                         id u8, op u8 (0 vel, 1 move, 2 stop, 3 limits, 4 zero),
 //                                        a f32 (vel / vmax), b f32 (amax), pos i64 (move / zero)
 //   0x64 CAM_STATUS                      -                   -> CAM_INFO
+//   0x70 TOF_POWER                       op u8 (0 off, 1 on, 2 on with a fresh firmware download):
+//                                        starting is asynchronous, watch TOF_INFO.state
+//   0x71 TOF_INFO_REQ                    -                   -> TOF_INFO
+//   0x72 TOF_PRESET                      preset u8 (0x40-0x48)  -> TOF_CONFIG
+//   0x73 TOF_CONFIG_REQ                  -                   -> TOF_CONFIG
+//   0x74 TOF_CONFIG_SET                  page u8[190] (registers 0x22-0xdf)  -> TOF_CONFIG
+//   0x75 TOF_MEASURE                     on u8: start / stop; frames stream as TOF_HDR/DATA/END
+//   0x76 TOF_OPTIONS                     bus_khz u16 (0: unchanged), clock_correction u8
+//   (TOF requests that need the sensor ACK BAD_REQUEST while it is off, starting or failed.)
 //
 // Device -> host
 //   0x80 ACK        req_type u8, result u8 (PROTO_OK...), cmd_seq u32
@@ -76,6 +85,16 @@
 //   0x84 CAM_INFO   loaded u8 (table mask), per axis: table i8 (-1 none), leader u8,
 //                   per virtual leader (2): pos i64, vel f32, vmax f32, amax f32, mode u8
 //   0x91 EVENT      tick u32, kind u8 (PROTO_EV_...), axis u8 (1-based, 0 = none), pos i64
+//   0x85 TOF_INFO   state u8 (tof_state_t), error u8 (tof_error_t), app_version u8[4], chip_id u8,
+//                   rev_id u8, serial u32, bus_khz u16, flags u8 (bit0 clock correction, bit1
+//                   binary stream), preset u8, download_pct u8, frames u32, bad_frames u32,
+//                   bus_errors u32, clock_ratio f32, frame_read_us u32
+//   0x86 TOF_CONFIG preset u8, page u8[190]
+//   0x92 TOF_HDR    host_us u32, pre-header u8[5] (FIFOSTATUS, systick u32), frame header u8[16],
+//                   clock_ratio f32 (applied to the distances that follow; 1 = none)
+//   0x93 TOF_DATA   offset u16, bytes...: the frame after its header, footer included, in order
+//   0x94 TOF_END    status u8 (0 ok, 1 no end-of-frame marker), bytes u16, read_us u32
+//   TOF frames are sent as they are read from the sensor (tof.h, tof_frame.h for the layout).
 //
 // Telemetry field bits: TF_POS 1, TF_VEL 2, TF_MODE 4, TF_AMP 8, TF_Q 16.
 // System field bits:    TS_SEQ 1, TS_VMOT 2, TS_LADDER 4, TS_STOP 8.
@@ -99,8 +118,11 @@ enum {
     PROTO_SHOW_BEGIN = 0x50, PROTO_SHOW_DATA, PROTO_SHOW_END, PROTO_SHOW_RUN, PROTO_SHOW_STOP,
     PROTO_SHOW_LIST, PROTO_SHOW_ERASE,
     PROTO_CAM_POINTS = 0x60, PROTO_CAM_LOAD, PROTO_CAM_ENGAGE, PROTO_VLEADER, PROTO_CAM_STATUS,
+    PROTO_TOF_POWER = 0x70, PROTO_TOF_INFO_REQ, PROTO_TOF_PRESET, PROTO_TOF_CONFIG_REQ,
+    PROTO_TOF_CONFIG_SET, PROTO_TOF_MEASURE, PROTO_TOF_OPTIONS,
     PROTO_ACK = 0x80, PROTO_PONG, PROTO_STATUS, PROTO_SHOW_INFO, PROTO_CAM_INFO,
-    PROTO_TELEM = 0x90, PROTO_EVENT,
+    PROTO_TOF_INFO, PROTO_TOF_CONFIG,
+    PROTO_TELEM = 0x90, PROTO_EVENT, PROTO_TOF_HDR, PROTO_TOF_DATA, PROTO_TOF_END,
 };
 
 enum { PROTO_OK, PROTO_QUEUE_FULL, PROTO_BAD_REQUEST, PROTO_UNKNOWN };
@@ -122,3 +144,8 @@ size_t protocol_request(uint8_t type, const uint8_t *payload, size_t len,
 void protocol_send_telemetry(const control_snapshot_t *s, uint32_t line, uint32_t axes,
                              uint32_t fields, uint32_t sys);
 void protocol_send_event(uint32_t tick, uint8_t kind, uint8_t axis, int64_t pos);
+
+// ToF frames as they are read (called by tof.c).
+void protocol_send_tof_header(uint32_t host_us, const uint8_t pre_and_header[21], float clock_ratio);
+void protocol_send_tof_data(uint16_t offset, const uint8_t *data, size_t n);
+void protocol_send_tof_end(uint8_t status, uint32_t bytes, uint32_t read_us);

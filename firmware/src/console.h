@@ -24,3 +24,10 @@ bool app_stress_on(void);
 const char *app_save_config(void);
 const config_t *app_config(void);   // as loaded / last saved
 void app_set_boot_show(int slot);   // -1: none (save to keep it)
+void app_set_boot_program(int k);   // built-in program k at power-up (save to keep it)
+// Stop what plays and start built-in program k once the axes are at rest.
+// NULL, or why not.
+const char *app_start_program(int k);
+void app_stop_playing(void);        // stop the show or program (and any queued one)
+// Stop what plays and start the ToF map overlay (tof_overlay.h). NULL, or why not.
+const char *app_start_tof_map(void);

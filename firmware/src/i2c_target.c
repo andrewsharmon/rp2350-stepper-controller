@@ -8,6 +8,9 @@ bool i2c_target_init(void) {
     return false;
 }
 
+void i2c_target_release(void) {
+}
+
 void i2c_target_poll(void) {
 }
 
@@ -30,6 +33,7 @@ static volatile bool req_pending;
 static uint8_t tx[2 + FRAME_MAX_PAYLOAD];   // [n][type][payload]
 static volatile uint32_t tx_len, tx_pos;
 static volatile bool tx_ready;
+static bool active;
 
 static void handler(i2c_inst_t *i2c, i2c_slave_event_t event) {
     switch (event) {
@@ -65,9 +69,20 @@ static void handler(i2c_inst_t *i2c, i2c_slave_event_t event) {
 bool i2c_target_init(void) {
     gpio_set_function(BOARD_I2C_SDA_GPIO, GPIO_FUNC_I2C);
     gpio_set_function(BOARD_I2C_SCL_GPIO, GPIO_FUNC_I2C);
+    rx_len = tx_len = tx_pos = 0;
+    req_pending = tx_ready = false;
     i2c_init(i2c1, I2C_BAUD);
     i2c_slave_init(i2c1, BOARD_I2C_TARGET_ADDR, handler);
+    active = true;
     return true;
+}
+
+void i2c_target_release(void) {
+    if (!active)
+        return;
+    i2c_slave_deinit(i2c1);
+    req_pending = false;  // a request caught mid-way is dropped
+    active = false;
 }
 
 void i2c_target_poll(void) {

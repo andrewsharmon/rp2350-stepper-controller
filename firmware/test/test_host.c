@@ -1,6 +1,6 @@
 // Host-side checks for the PWM period encoder and microstep math.
 //
-//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
+//   cc -std=c11 -O1 -Wall -Wextra -I../src test_host.c ../src/hbridge_encode.c ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c ../src/programs.c ../src/tof_frame.c ../src/tof_map.c -DCONFIG_HOST_TEST -lm -o test_host && ./test_host
 //
 // The PIO program is simulated per segment: each 16-bit half-word holds
 // pattern bits [3:0] and length [15:4], and lasts length + 3 SM clocks.
@@ -20,9 +20,12 @@
 #include "config.h"
 #include "show.h"
 #include "standalone.h"
+#include "programs.h"
 #include "cam.h"
 #include "cam_store.h"
 #include "trig.h"
+#include "tof_frame.h"
+#include "tof_map.h"
 
 #define PERIOD_CLOCKS 3750  // 150 MHz / 2 / 20 kHz
 #define SPAN (PERIOD_CLOCKS - 4 * HBRIDGE_SEGMENT_OVERHEAD)
@@ -757,6 +760,79 @@ static void test_pvt(void) {
           motion_units_to_steps(ax.pos));
 }
 
+static void test_programs(void) {
+    const int n = 10;
+    float vmax[10], amax[10];
+    for (int i = 0; i < n; i++)
+        vmax[i] = 1500.0f, amax[i] = 2000.0f;  // config defaults
+    for (int k = 0; k < PROGRAM_COUNT; k++) {
+        const program_t *p = &programs[k];
+        char msg[120];
+        CHECK(!program_check_limits(p, n, vmax, amax, msg, sizeof msg), "%s over the default limits",
+              p->name);
+        // Warm-up plus a full period, on the analytic positions.
+        const double h = 1e-3, end = PROGRAM_WARMUP_S + p->period_s;
+        double vpk = 0, apk = 0, ppk = 0, seam = 0;
+        for (int i = 0; i < n; i++) {
+            for (double t = 0; t <= end; t += h) {
+                double a = program_pos(p, i, n, t - h), b = program_pos(p, i, n, t),
+                       c = program_pos(p, i, n, t + h);
+                vpk = fmax(vpk, fabs(c - a) / (2 * h));
+                apk = fmax(apk, fabs(c - 2 * b + a) / (h * h));
+                ppk = fmax(ppk, fabs(b));
+            }
+            // Periodic: one period on, the pattern is back where it was.
+            double t1 = PROGRAM_WARMUP_S + 0.37;
+            seam = fmax(seam, fabs(program_pos(p, i, n, t1 + p->period_s) - program_pos(p, i, n, t1)));
+            show_point_t p0 = program_point(p, i, n, 0);
+            CHECK(p0.t_ms == 0 && fabsf(p0.vel) < 1e-3f && p0.pos == (float)program_pos(p, i, n, 0),
+                  "%s axis %d starts at %f moving %f", p->name, i + 1, (double)p0.pos, (double)p0.vel);
+        }
+        CHECK(vpk <= p->vpeak && apk <= p->apeak, "%s peaks %.0f, %.0f over the declared %.0f, %.0f",
+              p->name, vpk, apk, (double)p->vpeak, (double)p->apeak);
+        CHECK(ppk <= PROGRAM_AMP + 1e-6, "%s reaches %.0f steps", p->name, ppk);
+        CHECK(seam < 1e-6, "%s not periodic (%g steps)", p->name, seam);
+
+        // What an axis actually follows: the PVT stream through motion.c, from
+        // rest at the first point. Every axis's speed and acceleration must
+        // stay within the declared peaks.
+        float mv = 0, ma = 0, merr = 0;
+        for (int i = 0; i < n; i++) {
+            motion_axis_t ax;
+            motion_init(&ax, vmax[i], amax[i]);
+            ax.pos = ax.gen_pos = ax.gen_last = motion_steps_to_units(program_point(p, i, n, 0).pos);
+            uint64_t next = 1;
+            uint32_t t_prev = 0;
+            float v_prev = 0;
+            uint32_t ticks = (uint32_t)(end * 1000.0);
+            for (uint32_t tick = 0; tick < ticks; tick++) {
+                while (ax.pvt_count < 12) {
+                    show_point_t pt = program_point(p, i, n, next++);
+                    motion_pvt_push(&ax, motion_steps_to_units(pt.pos), pt.vel, pt.t_ms - t_prev);
+                    t_prev = pt.t_ms;
+                }
+                if (tick == 0)
+                    CHECK(motion_pvt_start(&ax), "%s: pvt start refused", p->name);
+                motion_tick(&ax);
+                mv = fmaxf(mv, fabsf(ax.vel));
+                ma = fmaxf(ma, fabsf(ax.vel - v_prev) * 1000.0f);
+                v_prev = ax.vel;
+                merr = fmaxf(merr, fabsf(motion_units_to_steps(ax.pos) -
+                                         (float)program_pos(p, i, n, (tick + 1) / 1000.0)));
+            }
+            CHECK(ax.pvt_underruns == 0, "%s axis %d underran", p->name, i + 1);
+        }
+        CHECK(mv <= p->vpeak && ma <= p->apeak, "%s followed at %.0f, %.0f, declared %.0f, %.0f",
+              p->name, (double)mv, (double)ma, (double)p->vpeak, (double)p->apeak);
+        CHECK(merr < 0.5f, "%s tracking error %f steps", p->name, (double)merr);
+    }
+    // Refused on an axis whose limits are too low.
+    char msg[120];
+    amax[4] = 500.0f;
+    CHECK(program_check_limits(&programs[0], n, vmax, amax, msg, sizeof msg) && strstr(msg, "axis 5"),
+          "low amax on axis 5 not caught");
+}
+
 // Run a group to completion on trapezoid axes (no filter, so the path itself
 // is checked). Tracks per-axis speed / acceleration excess and the largest
 // per-tick speed jump.
@@ -1048,6 +1124,108 @@ static void test_motion(void) {
     CHECK(!motion_set_profile(&ax, PROFILE_TRAP, 0), "set_profile allowed while moving");
 }
 
+static void test_tof(void) {
+    // Record sizes: 1 peak = distance + confidence; signal adds 2 per peak.
+    CHECK(tof_record_size(1) == 3, "1 peak: %u", tof_record_size(1));
+    CHECK(tof_record_size(TOF_LAYOUT_SUBFRAME | 1) == 3, "sub-frame bit changed the size");
+    CHECK(tof_record_size(4 | TOF_LAYOUT_SIGNAL | TOF_LAYOUT_NOISE | TOF_LAYOUT_XTALK) == 24, "largest: %u",
+          tof_record_size(4 | TOF_LAYOUT_SIGNAL | TOF_LAYOUT_NOISE | TOF_LAYOUT_XTALK));
+    uint32_t c, r, f;
+    tof_grid(5, &c, &r, &f);
+    CHECK(c == 48 && r == 16 && f == 2, "48x32 grid %ux%u x%u", c, r, f);
+    tof_grid(0, &c, &r, &f);
+    CHECK(c == 8 && r == 8 && f == 1, "8x8 grid %ux%u x%u", c, r, f);
+
+    // Clock: a chip running 2 % slow (fewer ticks per host second) reads
+    // distances 2 % short; the ratio scales them back up.
+    tof_clock_t clk;
+    tof_clock_reset(&clk);
+    for (uint32_t k = 0; k < 6; k++)
+        tof_clock_add(&clk, 4000000000u + k * 33000u, 0xfffff000u + (uint32_t)(k * 33 * 125 * 0.98), 125);
+    CHECK(fabsf(clk.ratio - 1.0f / 0.98f) < 2e-3f, "clock ratio %f (host and chip counters wrap)",
+          (double)clk.ratio);
+    tof_clock_reset(&clk);
+    for (uint32_t k = 0; k < 6; k++)
+        tof_clock_add(&clk, k * 33000u, k * 33 * 125 * 3, 125);  // implausible: kept at 1
+    CHECK(clk.ratio == 1.0f, "implausible ratio accepted: %f", (double)clk.ratio);
+
+    // Two zones, layout noise + xtalk + 2 peaks with signal: distances sit at
+    // 4 and 9 within each 14-byte record.
+    uint8_t layout = 2 | TOF_LAYOUT_SIGNAL | TOF_LAYOUT_NOISE | TOF_LAYOUT_XTALK;
+    uint8_t rec[28] = {0};
+    rec[4] = 0xe8, rec[5] = 0x03, rec[6] = 9;          // zone 0 peak 0: 1000, confidence 9
+    rec[9] = 0xd0, rec[10] = 0x07, rec[11] = 4;        // zone 0 peak 1: 2000
+    rec[14 + 4] = 0x10, rec[14 + 5] = 0x27, rec[14 + 6] = 0;  // zone 1: 10000, no target
+    rec[0] = rec[2] = 0x55;                             // noise, xtalk: untouched
+    tof_correct_distances(rec, sizeof rec, layout, 1.01f);
+    CHECK((rec[4] | rec[5] << 8) == 1010 && (rec[9] | rec[10] << 8) == 2020, "corrected %u %u",
+          rec[4] | rec[5] << 8, rec[9] | rec[10] << 8);
+    CHECK(rec[0] == 0x55 && rec[2] == 0x55 && rec[6] == 9, "correction touched other fields");
+    tof_summary_t sum;
+    tof_summary_reset(&sum);
+    tof_summary_add(&sum, rec, sizeof rec, layout);
+    CHECK(sum.zones == 2 && sum.valid == 1 && sum.min_raw == 1010 && sum.max_raw == 1010,
+          "summary %u/%u %u-%u", sum.valid, sum.zones, sum.min_raw, sum.max_raw);
+}
+
+static void test_tof_map(void) {
+    // Zone collection: a 32x32 measurement comes as two sub-frames of 16
+    // rows, even rows first; zones with no confidence read 0.
+    static uint16_t grid[32 * 32];
+    uint8_t rec[2 * 3] = {0x64, 0x00, 5, 0x10, 0x27, 0};   // zone 0: 100, zone 1: no target
+    tof_zones_add(grid, 32, 32, 2, 1, 32 * 3 + 4, rec, sizeof rec, 1, 1);
+    CHECK(grid[7 * 32 + 4] == 100 && grid[7 * 32 + 5] == 0, "sub-frame 1 row 3 (grid row 7) col 4 = %u, %u",
+          grid[7 * 32 + 4], grid[7 * 32 + 5]);
+    tof_zones_add(grid, 32, 32, 2, 1, 32 * 16, rec, sizeof rec, 1, 1);   // past the grid: ignored
+    rec[2] = 3;
+    tof_zones_add(grid, 32, 32, 2, 0, 0, rec, 3, 1, 4);
+    CHECK(grid[0] == 0, "confidence 3 under 4 kept: %u", grid[0]);
+
+    // 16x16, ten axes over the middle quarter (rows 6-9), 0.25 mm units.
+    tof_map_cfg_t c;
+    tof_map_defaults(&c, 10);
+    uint32_t c0, c1, r0, r1;
+    tof_map_band(&c, 16, 16, &c0, &c1, &r0, &r1);
+    CHECK(c0 == 0 && c1 == 15 && r0 == 6 && r1 == 9, "band cols %u-%u rows %u-%u", c0, c1, r0, r1);
+    tof_map_band(&c, 8, 8, &c0, &c1, &r0, &r1);
+    CHECK(r0 == 3 && r1 == 4, "8x8 band rows %u-%u", r0, r1);
+    static uint16_t z[16 * 16];
+    memset(z, 0, sizeof z);
+    for (uint32_t col = 0; col < 16; col++)
+        z[0 * 16 + col] = 4 * 100;            // row 0, outside the band: ignored
+    z[7 * 16 + 0] = 4 * 200;                  // axis 1 (columns 0-1): 200 mm
+    z[8 * 16 + 1] = 4 * 180;                  //   nearer return in its slice wins
+    z[6 * 16 + 2] = 4 * 100;                  // axis 2 (column 2): under the range, clamped
+    z[9 * 16 + 15] = 4 * 1000;                // axis 10 (columns 14-15): past it, clamped
+    float mm[TOF_MAP_MAX_AXES];
+    tof_map_distances(&c, z, 16, 16, 0.25f, mm);
+    CHECK(mm[0] == 180.0f && mm[1] == 150.0f && mm[9] == 300.0f, "axes 1, 2, 10: %f %f %f", (double)mm[0],
+          (double)mm[1], (double)mm[9]);
+    CHECK(mm[4] == 300.0f, "empty slice reads %f, not far", (double)mm[4]);
+    CHECK(tof_map_steps(&c, 150.0f) == 1000.0f && tof_map_steps(&c, 300.0f) == -1000.0f &&
+              fabsf(tof_map_steps(&c, 225.0f)) < 1e-3f && tof_map_steps(&c, 50.0f) == 1000.0f,
+          "steps %f %f %f", (double)tof_map_steps(&c, 150.0f), (double)tof_map_steps(&c, 225.0f),
+          (double)tof_map_steps(&c, 300.0f));
+    c.mirror = true;
+    tof_map_distances(&c, z, 16, 16, 0.25f, mm);
+    CHECK(mm[9] == 180.0f && mm[0] == 300.0f, "mirrored: axis 10 %f", (double)mm[9]);
+
+    // Defaults lay axes out in order; distances come per slice.
+    for (uint32_t k = 0; k < 10; k++)
+        CHECK(c.order[k] == k, "default order: slice %u is axis %u", k, c.order[k] + 1);
+
+    // More axes than columns: every axis still gets a column.
+    c.mirror = false;
+    memset(z, 0, sizeof z);
+    for (uint32_t col = 0; col < 8; col++)
+        z[3 * 8 + col] = (uint16_t)(4 * (160 + 10 * col));
+    tof_map_distances(&c, z, 8, 8, 0.25f, mm);
+    for (uint32_t i = 1; i < 10; i++)
+        CHECK(mm[i] >= mm[i - 1] && mm[i] >= 160.0f, "8 columns, axis %u: %f after %f", i + 1, (double)mm[i],
+              (double)mm[i - 1]);
+    CHECK(mm[0] == 160.0f && mm[9] == 230.0f, "8 columns ends %f %f", (double)mm[0], (double)mm[9]);
+}
+
 int main(void) {
     test_encoder();
     test_phase_inc();
@@ -1059,8 +1237,11 @@ int main(void) {
     test_standalone();
     test_cam();
     test_trig();
+    test_tof();
+    test_tof_map();
     test_motion();
     test_pvt();
+    test_programs();
     test_group();
     if (failures) {
         printf("%d check(s) failed\n", failures);

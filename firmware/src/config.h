@@ -15,6 +15,9 @@
 #define CONFIG_FLAG_REVERSE   1   // reverse the direction of rotation
 #define CONFIG_FLAG_SWAP_COILS 2  // coil A on the B pins and vice versa
 
+// boot_show values from here up start built-in program (boot_show - this).
+#define CONFIG_BOOT_PROGRAM 0x80
+
 typedef struct {
     float amp_low, amp_high, amp_hold;    // run at low speed, run at high speed, hold
     float low_speed, high_speed;          // full steps/s: flat below, capped above
@@ -34,7 +37,7 @@ typedef struct {
     uint32_t generation;
     config_axis_t axis[CONFIG_AXES];
     uint16_t hold_delay_ms;
-    uint8_t boot_show;                    // 0xff: none
+    uint8_t boot_show;                    // show slot, CONFIG_BOOT_PROGRAM + k, or 0xff: none
     uint8_t reserved;
     uint32_t crc;                         // CRC-32 of everything before it
 } config_t;

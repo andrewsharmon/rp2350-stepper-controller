@@ -31,7 +31,8 @@ What works today (measured on a Pico 2 + DRV8833 + 8 mm stepper):
 - **10 axes:** each has its own position, velocity or jog mode on a 1 kHz trajectory tick. Drive amplitude depends on speed, with lower holding current at standstill. Core 1 is about 33-35% loaded, core 0 about 0.5%.
 - **Coordinated groups:** up to 4 groups, each owning a set of axes. A group follows a queue of straight lines and arcs in joint space, with every axis starting and finishing together. Lookahead keeps it moving through gentle corners and chord-split arcs, and no axis exceeds its own limits. On the Pico 2, a 300-step-radius circle ran at a constant 800 steps/s and closed exactly.
 - **Shows:** keyframe tracks for axes and LED pixels on one timeline, written as JSON, compiled and uploaded to one of 4 flash slots. Axes pass exactly through every keyframe (played as PVT), LED colours fade between keys, and shows can loop. A show is refused if any segment would exceed an axis's speed or acceleration limit. On the Pico 2, a looping 10-axis wave with 9 LED tracks hit all 360 keyframes checked exactly over 2.5 loops.
-- **Standalone mode:** a boot show (saved in the configuration) starts at power-up with no computer attached. Btn1 clears a latched stop once the e-stop is closed again, or starts / stops the selected show; Btn2 selects the next stored show, switching to it if one is playing.
+- **Built-in programs:** 12 looping motion patterns for a row of linear actuators (breathe, travel, standing, ripple, seesaw, zipper, domino, stairs, scan, chase, interference, drift), ±1000 full steps about position 0, all within the default limits (1500 steps/s, 2000 steps/s²). They run along the board's row of connectors, which on single_sh_proto is 5 6 7 8 9 10 1 2 3 4 from the far end to the USB end. They play through the show player as PVT streams, warming up from rest at their first pose. Position 0 is the power-up position, so power up with the actuators mid-stroke (or zero them there with `z`). `prog list`, `prog <n>`, `prog stop` on the console.
+- **Standalone mode:** the buttons step through the built-in programs, then the stored shows, with no computer attached. Btn1 clears a latched stop once the e-stop is closed again, or starts / stops the selected entry; Btn2 selects the next one, switching to it if one is playing (the axes stop, then the new one starts). For 1.5 s after a press the axis LEDs show the entry's number as a bar: amber for programs 1-10, cyan for 11-12, magenta for shows. A boot program or show (`boot p<n>` / `boot <n>`, then `save`) starts at power-up.
 - **Configuration in flash:** per-axis limits, motion profile, automatic amplitude curve (run low/high, hold, corner speeds) and wiring fixes (reverse direction, swap coils) survive power cycles. Two sectors are written alternately with a generation counter and CRC, so an interrupted save keeps the previous configuration.
 - **Streamed PVT:** the host sends position/velocity/time points, and each axis follows a cubic through them. A 10-axis wave streamed at 20 ms per point tracked the ideal curve within 0.0005 steps. Running out of points while moving brakes safely.
 - **Telemetry:** up to 1 kHz with selectable axes and fields (position, speed, mode, amplitude, PVT queue, plus motor voltage, ladder, stop state and the last applied command). Each line is numbered so a host can detect drops. Event lines report finished moves, PVT underruns and stops. At 1 kHz with every field on 10 axes, no lines were dropped and core 0 was 39% busy.
@@ -49,7 +50,10 @@ tools/stepperctl/    host library + command line (binary protocol)
 tools/shows/         example shows (JSON; format in tools/stepperctl/show.py)
 tools/cams/          example cam tables (JSON: {"cyclic": true, "points": [[x, y], ...]})
 tools/pvt_demo.py    host demo: streams a PVT wave over USB serial
+tools/web/           browser pages (Web Serial, binary protocol): index.html actuators,
+                     tof.html ToF sensor 3D viewer and settings
 firmware/            Pico SDK (C) firmware
+  third_party/tmf8829/  ams TMF8829 sensor application image (MIT)
   src/               motor PWM (PIO/DMA), microstepping, ADC monitor, ladder, LEDs
   boards/            board header for the custom RP2354B controller
   test/test_host.c   host-side tests (PWM encoder, microstep math, ladder, motion)
@@ -94,8 +98,70 @@ cd firmware/test
 cc -std=c11 -O1 -Wall -Wextra -DCONFIG_HOST_TEST -I../src test_host.c ../src/hbridge_encode.c \
    ../src/microstep.c ../src/sine_lut.c ../src/ladder.c ../src/motion.c ../src/group.c \
    ../src/frame.c ../src/config.c ../src/show.c ../src/standalone.c ../src/cam.c ../src/cam_store.c \
-   -lm -o test_host && ./test_host
+   ../src/programs.c ../src/tof_frame.c ../src/tof_map.c -lm -o test_host && ./test_host
 ```
+
+## ToF sensor (LightRanger 14 Click)
+
+A MikroE LightRanger 14 Click (ams TMF8829 multi-zone dToF, 8x8 to 48x32 zones,
+10 mm to 11 m) can hang off the Qwiic port. `tof on` makes I2C1 an I2C host for it
+(the I2C target at 0x42 is off meanwhile; `tof off` gives the port back), downloads
+the sensor's application into its RAM and loads the 8x8 preset. Driver:
+`firmware/src/tmf8829.c`; service and frame streaming: `firmware/src/tof.c`.
+
+Wiring: SDA, SCL, 3V3 and GND from the Qwiic connector. The Click must be set to
+I2C, its EN pin (mikroBUS PWM) held high, and it needs 3V3 (bridge JP1
+QWIIC_SUPPLY, or power it separately). INT isn't needed: the firmware polls.
+
+`tools/web/tof.html` (Chrome or Edge, opened from file://) connects over USB
+serial, switches the sensor on, picks the resolution preset, edits every
+register of the configuration page, and draws each measurement as a 3D point
+cloud (patches, dots or a surface) and a depth map, with PLY/CSV export. Demo
+plays a synthetic scene without a board. From a terminal:
+
+```
+tof on            tof res 16         tof period 100     tof start
+tof ?             tof get            tof set 0x53 10    tof stop / tof off
+```
+
+Not yet run against a real sensor: the register sequences follow ams's reference
+driver, and the page was checked with its synthetic frames only.
+
+### ToF map: the sensor drives the actuators
+
+`tof map on` makes the row of linear actuators follow what the sensor sees in a
+band across the middle of its field of view (the middle quarter of the rows, the
+full width). The band is split left to right into one slice per axis, in the
+board's row order (single_sh_proto's connectors run 5 6 7 8 9 10 1 2 3 4 from
+the far end to the USB end), and each axis follows the nearest return in its
+slice: 150 mm puts it at +1000 full
+steps, 300 mm at -1000, and nearer or farther clamps to the ends. A slice with
+nothing in it reads as far. Each axis's distance is smoothed (100 ms), and a new
+position move goes out when the target changes by 4 steps or more, so the axis's
+own limits and profile shape the motion.
+
+Starting switches the sensor on if needed, loads the 16x16 preset, and sets
+10 k iterations (the preset's 586 k is for the full range) with a 20 ms period.
+Then it measures with no output, unless a host or the console is already
+streaming; `tools/web/tof.html` can keep watching. It stops on `tof map off`,
+an e-stop, the sensor stopping or failing, a program, show or stress test
+starting, or a button starting one. Position 0 is the power-up position, as
+for the programs, so power up mid-stroke (or zero there with `z`). The fixed-time
+profiles (`cosine`, `quintic`) restart a segment on every retarget; use `scurve`
+(the default), `smooth` or `trap`.
+
+```
+tof map on            tof map off           tof map ?      (band in zones, live mm and targets)
+tof map range 150 300                       tof map steps 1000 -1000    (swap to reverse)
+tof map order 1,2,3,4,5,6,7,8,9,10        tof map order board   (axes left to right)
+tof map axes 5        tof map mirror on     tof map band 25 100   (height %, width %)
+tof map smooth 100    tof map deadband 4    tof map iter 10   tof map period 20   tof map res 16
+```
+
+Settings aren't saved to flash yet. On single_sh_proto with the LightRanger 14
+and ten actuators it ran at 49 measurements a second (16x16, 10 k iterations,
+20 ms), with about 70 of the 256 zones returning; axes under an object at
+~210 mm moved to about +150 steps while the rest went to the far end.
 
 ## Pico 2 bench setup
 
@@ -165,6 +231,17 @@ with Client() as c:
 
 Command-line tool tests (no hardware needed):
 `python3 -m unittest discover -s tools/stepperctl -p 'test_*.py' -t tools`
+
+### Browser control page
+
+[tools/web/index.html](tools/web/index.html) drives the actuators from Chrome
+or Edge over Web Serial: open the file directly (file:// works) and click
+Connect. Each axis gets a position slider (drag to move), hold-to-jog
+buttons, →0, Zero and Stop, with live position, speed and amplitude; there
+are also an all-axes row, STOP ALL (or Esc), clear stop, manual or automatic
+amplitude, speed and acceleration limits, the 12 built-in programs, and the
+text console. It speaks the binary protocol on the same USB serial port, so
+close any other program that has the port open first.
 
 ### I²C (Qwiic) — untested
 

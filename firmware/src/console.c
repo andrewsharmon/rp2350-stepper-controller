@@ -11,10 +11,13 @@
 #include "control.h"
 #include "microstep.h"
 #include "player.h"
+#include "programs.h"
 #include "protocol.h"
 #include "show_store.h"
 #include "cam_store.h"
 #include "led.h"
+#include "tof.h"
+#include "tof_overlay.h"
 
 #define LINE_MAX      160
 #define MAX_TELEM_HZ  1000  // one line per motion tick
@@ -67,13 +70,33 @@ static const char help_text[] =
     "  dir <ax> fwd|rev      reverse rotation      coils <ax> ab|ba  swap coils\n"
     "  cfg                   show the configuration    save  write it (and cam tables) to flash\n"
     "  show list | run <n> | stop   shows in flash slots 1-4 (upload with stepperctl)\n"
-    "  boot <n>|off          show to run at power-up (save to keep it)\n"
+    "  prog list | <n> | stop   built-in programs 1-12 (Btn2 steps through them, then the shows)\n"
+    "  boot <n>|p<n>|off     show n, or program n, to run at power-up (save to keep it)\n"
     "  defaults              restore defaults (until saved)\n"
     "  t <hz>                telemetry lines per second (0 = off, max 1000)\n"
     "  ta <ax>               telemetry axes (default *)\n"
     "  tf <f,...>            per-axis fields: pos vel mode amp q (default pos,vel)\n"
     "  ts <f,...>|none       system fields: seq vmot ladder stop (default none)\n"
     "  te on|off             event lines: E <tick> done|underrun <ax>, stop <cause>, clear\n"
+    "  tof on|off|reload     ToF sensor (LightRanger 14 / TMF8829) on the Qwiic port; on takes the\n"
+    "                        port from the I2C target, off gives it back; reload re-downloads its firmware\n"
+    "  tof start|stop        measure: one summary line per measurement (tools/web/tof.html draws them)\n"
+    "  tof res <r>           zones: 8 16 32 48, or 8lr (long range), 8ha 16ha 32ha 48ha (high accuracy)\n"
+    "  tof period <ms>       measurement period     tof iter <k>  kilo-iterations per measurement\n"
+    "  tof get [reg]         configuration page (registers 0x22-0xdf)   tof set <reg> <value>\n"
+    "  tof i2c <kHz>         bus speed, 100-1000 (default 1000)    tof clk on|off  clock correction\n"
+    "  tof ?                 sensor status\n"
+    "  tof map on|off|?      ToF map overlay: the nearest return in a band across the middle of the\n"
+    "                        sensor's view drives the row of axes (starts the sensor itself)\n"
+    "  tof map range <near_mm> <far_mm>   distances mapped (default 150 300)\n"
+    "  tof map steps <at_near> <at_far>   axis positions at those ends (default 1000 -1000)\n"
+    "  tof map order <ax,...>|board   axes left to right across the band (board: the connector\n"
+    "                        row, single_sh_proto 5,6,7,8,9,10,1,2,3,4)\n"
+    "  tof map axes <n>      axes 1-n in the board's row order    tof map mirror on|off  right to left\n"
+    "  tof map band <height%> [width%]    band size, centred (default 25 100)\n"
+    "  tof map smooth <ms>   distance smoothing (100)   tof map deadband <steps>  (4)\n"
+    "  tof map iter <k> | period <ms> | res <r> | conf <n>   sensor settings for the map\n"
+    "                        (default 10 k iterations, 20 ms, 16x16, confidence 1)\n"
     "  echo on|off           echo typed characters and show the prompt (off for scripts)\n"
     "  stress on|off         every axis sweeps its own speed wave\n"
     "  ?                     status\n"
@@ -221,6 +244,9 @@ static void print_config(void) {
     }
     if (saved->boot_show < SHOW_SLOTS)
         printf("  boot show: %u\n", saved->boot_show + 1);
+    else if (saved->boot_show >= CONFIG_BOOT_PROGRAM && saved->boot_show - CONFIG_BOOT_PROGRAM < PROGRAM_COUNT)
+        printf("  boot program: %u (%s)\n", saved->boot_show - CONFIG_BOOT_PROGRAM + 1,
+               programs[saved->boot_show - CONFIG_BOOT_PROGRAM].name);
     printf("  cam tables saved:");
     bool any = false;
     for (uint32_t k = 0; k < CAM_TABLES; k++) {
@@ -237,6 +263,187 @@ static void print_config(void) {
         if (s.cams_loaded & (1u << k))
             printf(" %lu", (unsigned long)k + 1);
     printf("%s\n", s.cams_loaded ? "" : " none");
+}
+
+static const struct {
+    const char *name;
+    uint8_t preset;
+} tof_presets[] = {
+    {"8", TMF8829_PRESET_8X8},        {"8lr", TMF8829_PRESET_8X8_LONG_RANGE},
+    {"8ha", TMF8829_PRESET_8X8_HIGH_ACCURACY}, {"16", TMF8829_PRESET_16X16},
+    {"16ha", TMF8829_PRESET_16X16_HIGH_ACCURACY}, {"32", TMF8829_PRESET_32X32},
+    {"32ha", TMF8829_PRESET_32X32_HIGH_ACCURACY}, {"48", TMF8829_PRESET_48X32},
+    {"48ha", TMF8829_PRESET_48X32_HIGH_ACCURACY},
+};
+
+static void tof_report(const char *err) {
+    if (err)
+        printf("tof: %s\n", err);
+}
+
+// Change config page bytes [off, off + len) to `v` (little-endian).
+static void tof_set_bytes(uint32_t off, uint32_t len, uint32_t v) {
+    uint8_t page[TMF8829_CFG_SIZE];
+    memcpy(page, tof_config(), sizeof page);
+    for (uint32_t k = 0; k < len; k++)
+        page[off + k] = (uint8_t)(v >> (8 * k));
+    tof_report(tof_config_write(page));
+}
+
+// tof map ... (argv[0] is "map").
+static void tof_map_command(int argc, char **argv) {
+    tof_overlay_cfg_t *c = tof_overlay_cfg();
+    const char *sub = argc > 1 ? argv[1] : "?";
+    float a = 0.0f, b = 0.0f;
+    bool num1 = argc > 2 && parse_float(argv[2], &a);
+    bool num2 = num1 && argc > 3 && parse_float(argv[3], &b);
+    bool sensor = false;
+    if (strcmp(sub, "on") == 0 && argc == 2) {
+        const char *err = app_start_tof_map();
+        if (err)
+            printf("tof map: %s\n", err);
+        else if (!tof_overlay_running())
+            printf("tof map: setting up the sensor\n");
+    } else if (strcmp(sub, "off") == 0 && argc == 2) {
+        if (tof_overlay_active())
+            printf("tof map off\n");
+        tof_overlay_stop(NULL);
+    } else if (strcmp(sub, "?") == 0) {
+        tof_overlay_print_status();
+    } else if (strcmp(sub, "range") == 0 && argc == 4 && num2 && a >= 10.0f && a <= 10000.0f &&
+               b >= 10.0f && b <= 10000.0f && a != b) {
+        c->map.near_mm = a;
+        c->map.far_mm = b;
+    } else if (strcmp(sub, "steps") == 0 && argc == 4 && num2) {
+        c->map.steps_near = a;
+        c->map.steps_far = b;
+    } else if (strcmp(sub, "axes") == 0 && argc == 3 && num1 && a >= 1.0f && a <= NUM_MOTORS &&
+               a <= TOF_MAP_MAX_AXES) {
+        tof_overlay_board_order((uint8_t)a);
+    } else if (strcmp(sub, "order") == 0 && argc == 3 && strcmp(argv[2], "board") == 0) {
+        tof_overlay_board_order(NUM_MOTORS);
+    } else if (strcmp(sub, "order") == 0 && argc == 3) {
+        // "5,6,7,...": each axis at most once.
+        uint8_t order[TOF_MAP_MAX_AXES];
+        uint32_t n = 0, seen = 0;
+        const char *p = argv[2];
+        while (*p) {
+            char *end;
+            long ax = strtol(p, &end, 10);
+            if (end == p || ax < 1 || ax > NUM_MOTORS || (seen & (1u << (ax - 1))) || n == TOF_MAP_MAX_AXES ||
+                (*end && *end != ',')) {
+                printf("tof map order: axes 1-%d, comma-separated, each once\n", NUM_MOTORS);
+                return;
+            }
+            seen |= 1u << (ax - 1);
+            order[n++] = (uint8_t)(ax - 1);
+            p = *end ? end + 1 : end;
+        }
+        if (n == 0) {
+            printf("tof map order: axes 1-%d, comma-separated, each once\n", NUM_MOTORS);
+            return;
+        }
+        memcpy(c->map.order, order, n);
+        c->map.axes = (uint8_t)n;
+    } else if (strcmp(sub, "mirror") == 0 && argc == 3) {
+        c->map.mirror = strcmp(argv[2], "off") != 0;
+    } else if (strcmp(sub, "band") == 0 && (argc == 3 || argc == 4) && num1 && (argc == 3 || num2) &&
+               a > 0.0f && a <= 100.0f && (argc == 3 || (b > 0.0f && b <= 100.0f))) {
+        c->map.band_height = a / 100.0f;
+        if (argc == 4)
+            c->map.band_width = b / 100.0f;
+    } else if (strcmp(sub, "smooth") == 0 && argc == 3 && num1 && a >= 0.0f && a <= 5000.0f) {
+        c->smooth_ms = (uint16_t)a;
+    } else if (strcmp(sub, "deadband") == 0 && argc == 3 && num1 && a >= 0.0f) {
+        c->deadband = a;
+    } else if (strcmp(sub, "conf") == 0 && argc == 3 && num1 && a >= 1.0f && a <= 255.0f) {
+        c->min_conf = (uint8_t)a;
+        if (tof_overlay_active())
+            printf("tof map: confidence applies from the next start\n");
+    } else if ((strcmp(sub, "iter") == 0 || strcmp(sub, "period") == 0) && argc == 3 && num1 && a >= 1.0f &&
+               a <= 65535.0f) {
+        if (sub[0] == 'i')
+            c->kilo_iterations = (uint16_t)a;
+        else
+            c->period_ms = (uint16_t)a;
+        sensor = true;
+    } else if (strcmp(sub, "res") == 0 && argc == 3) {
+        uint32_t k = 0;
+        while (k < sizeof tof_presets / sizeof *tof_presets && strcmp(argv[2], tof_presets[k].name) != 0)
+            k++;
+        if (k == sizeof tof_presets / sizeof *tof_presets) {
+            printf("tof map res: 8 16 32 48, 8lr, 8ha 16ha 32ha 48ha\n");
+            return;
+        }
+        c->preset = tof_presets[k].preset;
+        sensor = true;
+    } else {
+        printf("? tof map %s (type help)\n", sub);
+        return;
+    }
+    if (sensor && tof_overlay_running())
+        tof_report(tof_overlay_apply_sensor());
+}
+
+static void tof_command(int argc, char **argv) {
+    const char *sub = argc > 1 ? argv[1] : "?";
+    if (strcmp(sub, "map") == 0) {
+        tof_map_command(argc - 1, argv + 1);
+        return;
+    }
+    char *end;
+    long a = argc > 2 ? strtol(argv[2], &end, 0) : 0;
+    bool num = argc > 2 && *end == '\0';
+    if (strcmp(sub, "on") == 0 || strcmp(sub, "reload") == 0) {
+        tof_report(tof_on(sub[0] == 'r'));
+    } else if (strcmp(sub, "off") == 0) {
+        tof_off();
+    } else if (strcmp(sub, "start") == 0 || strcmp(sub, "stop") == 0) {
+        tof_report(tof_measure(strcmp(sub, "start") == 0, TOF_STREAM_TEXT));
+    } else if (strcmp(sub, "res") == 0 && argc == 3) {
+        uint32_t k = 0;
+        while (k < sizeof tof_presets / sizeof *tof_presets && strcmp(argv[2], tof_presets[k].name) != 0)
+            k++;
+        if (k == sizeof tof_presets / sizeof *tof_presets)
+            printf("tof res: 8 16 32 48, 8lr, 8ha 16ha 32ha 48ha\n");
+        else
+            tof_report(tof_preset(tof_presets[k].preset));
+    } else if ((strcmp(sub, "period") == 0 || strcmp(sub, "iter") == 0) && num && a >= 0 && a <= 0xffff) {
+        tof_set_bytes(sub[0] == 'p' ? TMF8829_CFG_PERIOD_MS : TMF8829_CFG_KILO_ITERATIONS, 2, (uint32_t)a);
+    } else if (strcmp(sub, "get") == 0 && (argc == 2 || num)) {
+        const uint8_t *page = tof_config();
+        uint32_t first = TMF8829_CFG_FIRST, last = TMF8829_CFG_FIRST + TMF8829_CFG_SIZE - 1;
+        if (argc == 3) {
+            if (a < (long)first || a > (long)last) {
+                printf("tof get: register 0x%02lx-0x%02lx\n", (unsigned long)first, (unsigned long)last);
+                return;
+            }
+            first = last = (uint32_t)a;
+        }
+        for (uint32_t reg = first & ~7u; reg <= last; reg++) {
+            if (reg % 8 == 0 || reg == first)
+                printf("%s0x%02lx:", reg == first ? "" : "\n", (unsigned long)reg);
+            if (reg < first)
+                printf("     ");
+            else
+                printf(" 0x%02x", page[reg - TMF8829_CFG_FIRST]);
+        }
+        putchar('\n');
+    } else if (strcmp(sub, "set") == 0 && argc == 4 && num) {
+        long v = strtol(argv[3], &end, 0);
+        if (*end || a < TMF8829_CFG_FIRST || a >= TMF8829_CFG_FIRST + TMF8829_CFG_SIZE || v < 0 || v > 255)
+            printf("tof set: <0x22-0xdf> <0-255>\n");
+        else
+            tof_set_bytes((uint32_t)(a - TMF8829_CFG_FIRST), 1, (uint32_t)v);
+    } else if (strcmp(sub, "i2c") == 0 && num) {
+        tof_report(tof_set_bus_khz((uint32_t)a));
+    } else if (strcmp(sub, "clk") == 0 && argc == 3) {
+        tof_set_clock_correction(strcmp(argv[2], "off") != 0);
+    } else if (strcmp(sub, "?") == 0) {
+        tof_print_status();
+    } else {
+        printf("? tof %s (type help)\n", sub);
+    }
 }
 
 static void run_line(char *buf) {
@@ -477,11 +684,28 @@ static void run_line(char *buf) {
         } else {
             goto usage;
         }
+    } else if (strcmp(cmd, "prog") == 0 && argc == 2) {
+        if (strcmp(argv[1], "list") == 0) {
+            for (int k = 0; k < PROGRAM_COUNT; k++) {
+                const program_t *p = &programs[k];
+                printf("  %2d: %-13s %2.0f s loop, peak %4.0f steps/s, %4.0f steps/s^2%s\n", k + 1, p->name,
+                       p->period_s, (double)p->vpeak, (double)p->apeak,
+                       player_program() == k ? "  (running)" : "");
+            }
+        } else if (strcmp(argv[1], "stop") == 0) {
+            app_stop_playing();
+        } else {
+            const char *err = app_start_program((int)strtol(argv[1], NULL, 10) - 1);
+            if (err)
+                printf("program not started: %s\n", err);
+        }
     } else if (strcmp(cmd, "boot") == 0 && argc == 2) {
-        long k = strtol(argv[1], NULL, 10);
+        long k = strtol(argv[1][0] == 'p' ? argv[1] + 1 : argv[1], NULL, 10);
         if (strcmp(argv[1], "off") == 0)
             app_set_boot_show(-1);
-        else if (k >= 1 && k <= SHOW_SLOTS)
+        else if (argv[1][0] == 'p' && k >= 1 && k <= PROGRAM_COUNT)
+            app_set_boot_program((int)k - 1);
+        else if (argv[1][0] != 'p' && k >= 1 && k <= SHOW_SLOTS)
             app_set_boot_show((int)k - 1);
         else
             goto usage;
@@ -575,6 +799,8 @@ static void run_line(char *buf) {
     } else if (strcmp(cmd, "te") == 0 && argc == 2) {
         events_on = strcmp(argv[1], "off") != 0;
         telem_binary = false;
+    } else if (strcmp(cmd, "tof") == 0) {
+        tof_command(argc, argv);
     } else if (strcmp(cmd, "echo") == 0 && argc == 2) {
         echo = strcmp(argv[1], "off") != 0;
     } else if (strcmp(cmd, "stress") == 0 && argc == 2) {

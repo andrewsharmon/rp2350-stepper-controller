@@ -35,7 +35,7 @@ flowchart LR
     subgraph Core0[Core 0: non-real-time]
         CON[console.c / protocol.c]
         I2CT[i2c_target.c]
-        PLY[player.c<br/>show → PVT feed]
+        PLY[player.c<br/>show / program → PVT feed]
         SA[standalone.c]
         WD[core 1 watchdog]
         LED[led.c WS2812]
@@ -607,7 +607,7 @@ flowchart TD
 |---|---|
 | per-axis vmax, amax, profile, jerk_ms | `config_t`, two alternating flash sectors, generation counter + CRC-32 |
 | drive curve (amp_low/high/hold, low/high speed), reverse, swap coils | `config_t` |
-| hold delay, boot show | `config_t` |
+| hold delay, boot show or program | `config_t` |
 | shows | 4 slots (`show_store.c`) |
 | cam tables | `cam_store.c`, saved by `save` |
 
@@ -627,8 +627,11 @@ valid record wins.
   without framing. Untested.
 * **Telemetry:** up to 1 kHz, numbered lines, with selectable axes and fields,
   plus events (done, underrun, e-stop, fault, clear).
-* **Standalone mode:** a boot show starts at power-up. Btn1 clears a stop or
-  starts/stops the show, and Btn2 selects the next show.
+* **Standalone mode:** the buttons step through the 12 built-in programs
+  (`programs.c`: periodic position patterns, streamed as PVT like a looping
+  show) and then the stored shows. Btn1 clears a stop or starts/stops the
+  selected entry, and Btn2 selects the next one. A boot program or show
+  starts at power-up.
 * **Status LEDs:** pixel 0 shows overall status (fault, watchdog, bypass),
   and pixels 1–10 show each axis's speed and direction.
 

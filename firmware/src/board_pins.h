@@ -25,6 +25,13 @@
 #define BOARD_I2C_SDA_GPIO    46
 #define BOARD_I2C_SCL_GPIO    47
 #define BOARD_I2C_TARGET_ADDR 0x42
+#ifdef BOARD_SINGLE_SH_PROTO
+// Axes in row order along the motor connectors, from the far end to the
+// USB end: J13 M5 M6, J14 M7 M8, J15 M9 M10, J11 M1 M2, J12 M3 M4. The ToF
+// map (tof_overlay.c) and the built-in programs (player.c) lay the axes
+// out in this order.
+#define BOARD_AXIS_ROW {4, 5, 6, 7, 8, 9, 0, 1, 2, 3}
+#endif
 #else
 // Pico 2 bench (RP2350A, GPIO 0-29). Motors 1-5 on GPIO 0-19. The ladder and
 // board ID go on the ADC header pins; VSYS/3 stands in for VMOTOR_SENSE.
@@ -38,3 +45,21 @@
 #define BOARD_LADDER_GPIO     26
 #define BOARD_WS2812_GPIO     20
 #endif
+
+// Place of `axis` (0-based) along the row of actuators, counting only axes
+// below `n`: its position in BOARD_AXIS_ROW, or the axis itself without one.
+static inline int board_row_slot(int axis, int n) {
+#ifdef BOARD_AXIS_ROW
+    static const unsigned char row[] = BOARD_AXIS_ROW;
+    int slot = 0;
+    for (unsigned k = 0; k < sizeof row; k++) {
+        if (row[k] == axis)
+            return slot;
+        if (row[k] < n)
+            slot++;
+    }
+#else
+    (void)n;
+#endif
+    return axis;
+}

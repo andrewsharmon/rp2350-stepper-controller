@@ -3,15 +3,19 @@
 // Core 1 (control.c) runs the 1 kHz trajectory tick for every axis and
 // streams sine-PWM to the PIO state machines through DMA rings. Core 0 (this
 // file) sets everything up, then runs the USB console (console.c), the
-// status LEDs, the stress test and the core 1 watchdog.
+// status LEDs, the stress test, the ToF sensor on the Qwiic port (tof.c),
+// the ToF map overlay that drives the actuators from it (tof_overlay.c) and
+// the core 1 watchdog.
 //
-// Standalone mode (standalone.h): an optional boot show starts at power-up;
-// Btn1 clears a latched stop or starts / stops the selected show, Btn2
-// selects (or switches to) the next stored show.
+// Standalone mode (standalone.h): the buttons step through a list of the
+// built-in motion programs (programs.h) followed by the stored shows. Btn1
+// clears a latched stop or starts / stops the selected entry, Btn2 selects
+// (or switches to) the next one. An optional boot entry starts at power-up.
 //
 // LEDs: pixel 0 is the general status, pixels 1-10 show each axis (green
 // forward, blue reverse, brighter = faster; dim white holding; grey stopped
-// but not yet holding; red while a stop is latched).
+// but not yet holding; red while a stop is latched). For a moment after a
+// button picks an entry, they show its number as a bar instead.
 
 #include <math.h>
 #include <stdio.h>
@@ -28,7 +32,10 @@
 #include "hbridge.h"
 #include "led.h"
 #include "i2c_target.h"
+#include "tof.h"
+#include "tof_overlay.h"
 #include "player.h"
+#include "programs.h"
 #include "show_store.h"
 #include "standalone.h"
 #include "trig.h"
@@ -37,26 +44,40 @@
 // Each ring holds 3.2 ms; trip well before a stalled producer lets it wrap.
 #define WATCHDOG_US 1500
 
-// Stress test: axis i sweeps a sine of speed with its own period and phase,
-// so the speed pattern rolls along the LED strip. Every STRESS_CYCLE_S all
-// axes pause for STRESS_PAUSE_S to exercise stop, hold and restart.
-#define STRESS_PEAK        1400.0f  // full steps/s, inside the default vmax
+// Stress test: axis i swings sinusoidally about where it stood when the test
+// started, with its own period and phase, so the speed pattern rolls along
+// the LED strip. Swing = STRESS_PEAK * period / 2pi each way (axis 1 ~670,
+// axis 10 ~1370 full steps), sized for linear actuators. Every STRESS_CYCLE_S
+// all axes pause for STRESS_PAUSE_S to exercise stop, hold and restart; the
+// swing's clock stops during the pause and a position correction takes up
+// the stopping distance, so the axes stay centred on their start.
+#define STRESS_PEAK        700.0f   // full steps/s
 #define STRESS_PERIOD_S    6.0f     // axis 1; later axes slightly slower
 #define STRESS_PERIOD_STEP 0.7f
 #define STRESS_CYCLE_S     20.0f
 #define STRESS_PAUSE_S     2.5f
+#define STRESS_RAMP_S      3.0f     // swing grows from 0 over this long at start
+#define STRESS_GAIN        2.0f     // position correction, 1/s
 #define STRESS_UPDATE_US   10000
 #define LED_UPDATE_US      20000
 #define LED_FULL_SPEED     1600.0f  // full brightness at this speed
+#define SELECT_SHOW_US     1500000u // how long the selected entry's number shows
+
+// Button entries: the built-in programs, then the stored show slots.
+#define SHOW_ENTRY(slot)   (PROGRAM_COUNT + (slot))
+#define ENTRIES            (PROGRAM_COUNT + SHOW_SLOTS)
 
 hbridge_t motors[NUM_MOTORS];
 
 static bool stress;
-static uint32_t stress_start;
+static uint64_t stress_start;
+static int64_t stress_center[NUM_MOTORS];  // units
 static bool tripped;  // core 1 watchdog fired
 static config_t config;   // as loaded / last saved
-static int selected_slot = -1;   // the show Btn1 starts
-static int pending_slot = -1;    // start once the axes are at rest and outputs on
+static int selected_entry = -1;  // what Btn1 starts
+static int pending_entry = -1;   // start once the axes are at rest and outputs on
+static uint32_t select_shown_at; // when a button last picked an entry
+static bool select_showing;
 static bool config_from_flash;
 // Core 0 idle: time spent waiting for serial input (USB interrupts that run
 // during the wait count as idle, so core 0 load reads slightly low).
@@ -73,8 +94,17 @@ void app_set_stress(bool on) {
         printf("stress test: clear the stop first (c)\n");
         return;
     }
+    if (on) {
+        player_stop();
+        pending_entry = -1;
+        tof_overlay_stop("stress test");
+        control_snapshot_t snap;
+        control_snapshot(&snap);
+        for (int i = 0; i < NUM_MOTORS; i++)
+            stress_center[i] = snap.pos[i];
+    }
     stress = on;
-    stress_start = time_us_32();
+    stress_start = time_us_64();
     if (!on) {
         control_cmd_t c = {.type = CMD_STOP, .axes = CONTROL_ALL_AXES};
         control_post(&c);
@@ -89,7 +119,34 @@ const config_t *app_config(void) {
 void app_set_boot_show(int slot) {
     config.boot_show = slot < 0 ? 0xff : (uint8_t)slot;
     if (slot >= 0)
-        selected_slot = slot;
+        selected_entry = SHOW_ENTRY(slot);
+}
+
+void app_set_boot_program(int k) {
+    config.boot_show = (uint8_t)(CONFIG_BOOT_PROGRAM + k);
+    selected_entry = k;
+}
+
+static int boot_entry(void) {
+    if (config.boot_show < SHOW_SLOTS)
+        return SHOW_ENTRY(config.boot_show);
+    int k = config.boot_show - CONFIG_BOOT_PROGRAM;
+    return k >= 0 && k < PROGRAM_COUNT ? k : -1;
+}
+
+static const char *entry_name(int e) {
+    static char name[40];
+    if (e < PROGRAM_COUNT)
+        snprintf(name, sizeof name, "program %d (%s)", e + 1, programs[e].name);
+    else
+        snprintf(name, sizeof name, "show %d", e - PROGRAM_COUNT + 1);
+    return name;
+}
+
+static int running_entry(void) {
+    if (player_program() >= 0)
+        return player_program();
+    return player_slot() >= 0 ? SHOW_ENTRY(player_slot()) : -1;
 }
 
 static uint32_t valid_slots(void) {
@@ -104,61 +161,95 @@ static uint32_t valid_slots(void) {
     return mask;
 }
 
-static void start_show(int slot) {
-    app_set_stress(false);
-    const char *err = player_start((uint32_t)slot);
+static void start_entry(int e) {
+    const char *err = e < PROGRAM_COUNT ? player_start_program((uint32_t)e)
+                                        : player_start((uint32_t)(e - PROGRAM_COUNT));
     if (err)
-        printf("show %d not started: %s\n", slot + 1, err);
+        printf("%s not started: %s\n", entry_name(e), err);
     else
-        selected_slot = slot;
+        printf("%s started\n", entry_name(e));
+}
+
+// Stop whatever is playing; start entry e once the axes are at rest.
+static void queue_entry(int e) {
+    app_set_stress(false);
+    tof_overlay_stop(entry_name(e));
+    player_stop();
+    pending_entry = selected_entry = e;
+}
+
+static void show_selection(void) {
+    select_shown_at = time_us_32();
+    select_showing = true;
+}
+
+const char *app_start_program(int k) {
+    if (k < 0 || k >= PROGRAM_COUNT)
+        return "no such program";
+    if (!control_outputs_on)
+        return "outputs are stopped (c to clear)";
+    queue_entry(k);
+    return NULL;
+}
+
+void app_stop_playing(void) {
+    player_stop();
+    pending_entry = -1;
+}
+
+const char *app_start_tof_map(void) {
+    if (!control_outputs_on)
+        return "outputs are stopped (c to clear)";
+    app_set_stress(false);
+    app_stop_playing();
+    return tof_overlay_start();
 }
 
 static void on_button(int button) {
     sa_state_t st = {
         .stop_latched = !control_outputs_on,
         .line_idle = control_ladder.raw_prev != LADDER_ESTOP && control_ladder.raw_prev != LADDER_FAULT,
-        .running = player_slot(),
-        .selected = selected_slot,
-        .valid = valid_slots(),
+        .running = pending_entry >= 0 ? pending_entry : running_entry(),
+        .selected = selected_entry,
+        .valid = ((1u << PROGRAM_COUNT) - 1) | valid_slots() << PROGRAM_COUNT,
     };
-    sa_result_t r = sa_button(&st, button, SHOW_SLOTS);
+    sa_result_t r = sa_button(&st, button, ENTRIES);
     switch (r.action) {
     case SA_CLEAR:
         control_clear_request = true;
-        break;
+        printf("btn%d: clear stop\n", button);
+        return;
     case SA_START:
-        start_show(r.slot);
+    case SA_SWITCH:
+        queue_entry(r.slot);
         break;
     case SA_STOP:
-        player_stop();
-        pending_slot = -1;
-        break;
-    case SA_SWITCH:
-        player_stop();
-        pending_slot = selected_slot = r.slot;
-        break;
+        printf("btn%d: stop %s\n", button, entry_name(st.running));
+        app_stop_playing();
+        return;
     case SA_SELECT:
-        selected_slot = r.slot;
+        selected_entry = r.slot;
         break;
     case SA_NONE:
-        break;
+        printf("btn%d: nothing to do\n", button);
+        return;
     }
-    printf("btn%d: %s\n", button, r.action == SA_CLEAR ? "clear stop" : r.action == SA_START ? "start show" :
-           r.action == SA_STOP ? "stop show" : r.action == SA_SWITCH ? "switch show" :
-           r.action == SA_SELECT ? "select show" : "nothing to do");
+    show_selection();
+    printf("btn%d: %s %s\n", button, r.action == SA_SELECT ? "select" : r.action == SA_START ? "start" : "switch to",
+           entry_name(r.slot));
 }
 
-// A boot or switched-to show starts once the axes are at rest.
+// A queued entry (boot, button or console) starts once the axes are at rest.
 static void poll_pending(void) {
-    if (pending_slot < 0 || player_slot() >= 0 || !control_outputs_on)
+    if (pending_entry < 0 || running_entry() >= 0 || !control_outputs_on)
         return;
     static control_snapshot_t s;  // ~1 KB: off core 0's stack
     control_snapshot(&s);
     if (s.settled_mask != CONTROL_ALL_AXES)
         return;
-    int slot = pending_slot;
-    pending_slot = -1;
-    start_show(slot);
+    int e = pending_entry;
+    pending_entry = -1;
+    start_entry(e);
 }
 
 const char *app_save_config(void) {
@@ -208,13 +299,15 @@ void app_print_status(void) {
         printf("config: saved, generation %lu\n", (unsigned long)config.generation);
     else
         printf("config: defaults (nothing saved yet)\n");
-    if (player_slot() >= 0)
-        printf("show %d: %s\n", player_slot() + 1, player_state());
-    else if (pending_slot >= 0)
-        printf("show %d: waiting for the axes to be at rest%s\n", pending_slot + 1,
+    if (running_entry() >= 0)
+        printf("%s: %s\n", entry_name(running_entry()), player_state());
+    else if (pending_entry >= 0)
+        printf("%s: waiting for the axes to be at rest%s\n", entry_name(pending_entry),
                control_outputs_on ? "" : " and the stop to be cleared");
-    if (config.boot_show < SHOW_SLOTS)
-        printf("boot show: %d\n", config.boot_show + 1);
+    else if (selected_entry >= 0)
+        printf("selected: %s\n", entry_name(selected_entry));
+    if (boot_entry() >= 0)
+        printf("boot: %s\n", entry_name(boot_entry()));
     printf("%s%s%s\n", tripped ? "WATCHDOG TRIPPED (X to reboot)" :
                        control_outputs_on ? "running" : "STOPPED (c to clear)",
            control_manual_amp >= 0.0f ? ", manual amplitude" : "", stress ? ", stress test" : "");
@@ -231,6 +324,13 @@ void app_print_status(void) {
     if (adc_monitor_present(MON_CC1))
         printf("  cc %lu/%lu mV", (unsigned long)adc_monitor_pin_mv(MON_CC1),
                (unsigned long)adc_monitor_pin_mv(MON_CC2));
+    if (tof_available()) {
+        tof_info_t t;
+        tof_get_info(&t);
+        printf("  tof %s", tof_state_name(t.state));
+        if (tof_overlay_active())
+            printf(", tof map %s", tof_overlay_state());
+    }
 
     double span = last_us ? (double)(now - last_us) : 0.0;
     printf("\n  %d motors (%d with pins), core 0 busy %.1f%%, core 1 busy %.1f%%, ring low-water ",
@@ -293,19 +393,64 @@ static void update_leds(void) {
         else if (px >= LED_COUNT)
             led_set(px, 0, 0, 0);
     }
+    // Selection: a bar as long as the entry's number (counting from 1 again
+    // past ten), amber for programs 1-10, cyan for 11 on, magenta for shows.
+    if (select_showing && time_us_32() - select_shown_at < SELECT_SHOW_US && selected_entry >= 0) {
+        bool is_show = selected_entry >= PROGRAM_COUNT;
+        int k = is_show ? selected_entry - PROGRAM_COUNT : selected_entry;
+        uint8_t r = 255, g = 120, b = 0;
+        if (is_show)
+            r = 200, g = 0, b = 200;
+        else if (k >= LED_AXIS_COUNT)
+            r = 0, g = 200, b = 255;
+        for (int i = 0; i < LED_AXIS_COUNT; i++) {
+            if (i <= k % LED_AXIS_COUNT)
+                led_set(LED_AXIS_FIRST + (uint32_t)i, r, g, b);
+            else
+                led_set(LED_AXIS_FIRST + (uint32_t)i, 0, 0, 0);
+        }
+    } else {
+        select_showing = false;
+    }
     led_show();
 }
 
-static void stress_update(float t) {
-    float in_cycle = fmodf(t, STRESS_CYCLE_S);
-    bool pause = in_cycle > STRESS_CYCLE_S - STRESS_PAUSE_S;
+// t: seconds since the test started (double: float loses the phase within
+// hours of running).
+static void stress_update(double t) {
+    const double active_s = STRESS_CYCLE_S - STRESS_PAUSE_S;
+    double cycles = floor(t / STRESS_CYCLE_S);
+    double in_cycle = t - cycles * STRESS_CYCLE_S;
+    bool pause = in_cycle > active_s;
+    double ts = cycles * active_s + fmin(in_cycle, active_s);  // swing clock
+
+    // Envelope: smoothstep 0 -> 1, so the swing starts at rest on the centre.
+    float e = 1.0f, de = 0.0f;
+    if (ts < STRESS_RAMP_S) {
+        float u = (float)ts / STRESS_RAMP_S;
+        e = u * u * (3.0f - 2.0f * u);
+        de = 6.0f * u * (1.0f - u) / STRESS_RAMP_S;
+    }
+
+    control_snapshot_t snap;
+    control_snapshot(&snap);
     for (int i = 0; i < NUM_MOTORS; i++) {
-        float period = STRESS_PERIOD_S + STRESS_PERIOD_STEP * (float)i;
-        float phase = 2.0f * (float)M_PI * (t / period + (float)i / (float)NUM_MOTORS);
+        float v = 0.0f;
+        if (!pause) {
+            float period = STRESS_PERIOD_S + STRESS_PERIOD_STEP * (float)i;
+            float w = 2.0f * (float)M_PI / period;
+            float phase = w * (float)fmod(ts, (double)period) +
+                          2.0f * (float)M_PI * (float)i / (float)NUM_MOTORS;
+            float a = STRESS_PEAK / w;  // swing each way, full steps
+            float s = trig_sinf(phase), co = trig_cosf(phase);
+            float target = e * a * s;
+            float pos = motion_units_to_steps(snap.pos[i] - stress_center[i]);
+            v = a * (de * s + e * w * co) + STRESS_GAIN * (target - pos);
+        }
         control_cmd_t c = {
             .type = CMD_VELOCITY,
             .axes = (uint16_t)(1u << i),
-            .f1 = pause ? 0.0f : STRESS_PEAK * trig_sinf(phase),
+            .f1 = v,
         };
         control_post(&c);
     }
@@ -349,10 +494,10 @@ int main(void) {
     control_energized = true;
     i2c_target_init();  // Qwiic, on boards that have it
 
-    // Standalone: queue the boot show (it starts once outputs are on, so a
+    // Standalone: queue the boot entry (it starts once outputs are on, so a
     // stop latched at power-up waits for Btn1 to clear it).
-    if (config.boot_show < SHOW_SLOTS)
-        pending_slot = selected_slot = config.boot_show;
+    if (boot_entry() >= 0)
+        pending_entry = selected_entry = boot_entry();
 
     uint32_t last_beat = control_heartbeat;
     absolute_time_t beat_seen = get_absolute_time();
@@ -368,17 +513,20 @@ int main(void) {
         }
         if (stress && now - last_stress >= STRESS_UPDATE_US) {
             last_stress = now;
-            stress_update((float)(now - stress_start) * 1e-6f);
+            stress_update((double)(time_us_64() - stress_start) * 1e-6);
         }
         console_telemetry(now);
         player_poll(now);
         i2c_target_poll();
+        tof_poll(now);
+        tof_overlay_poll(now);
         if (adc_monitor_check())
             printf("ADC FIFO overflow: monitor restarted\n");
 
         bool on = control_outputs_on;
         if (was_on && !on) {
             stress = false;
+            tof_overlay_stop("stop latched");
             printf("STOP: %s, motor outputs off (c to clear)\n",
                    ladder_level_name(control_ladder.stop_cause));
         }

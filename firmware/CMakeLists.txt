@@ -35,9 +35,17 @@ add_executable(stepper
     src/show.c
     src/show_store.c
     src/player.c
+    src/programs.c
     src/standalone.c
     src/i2c_target.c
+    src/tmf8829.c
+    src/tof_frame.c
+    src/tof.c
+    src/tof_map.c
+    src/tof_overlay.c
+    third_party/tmf8829/tmf8829_image.c
 )
+target_include_directories(stepper PRIVATE ${CMAKE_CURRENT_LIST_DIR}/third_party/tmf8829)
 
 pico_generate_pio_header(stepper ${CMAKE_CURRENT_LIST_DIR}/src/hbridge_pwm.pio)
 pico_generate_pio_header(stepper ${CMAKE_CURRENT_LIST_DIR}/src/ws2812.pio)
