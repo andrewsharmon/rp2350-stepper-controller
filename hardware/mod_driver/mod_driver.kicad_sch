@@ -10353,8 +10353,14 @@
 		)
 		(uuid "ca5c80b6-d5b9-5aae-bb77-847571982758")
 	)
-	(no_connect
-		(at 205.74 378.46)
+	(label "GND"
+		(at 205.74 378.46 0)
+		(effects
+			(font
+				(size 1.27 1.27)
+			)
+			(justify left bottom)
+		)
 		(uuid "8aec90a7-908d-56db-a0d9-005063982b72")
 	)
 	(label "M4_BIN1"
@@ -10850,14 +10856,8 @@
 		)
 		(uuid "2deedccf-0bd0-54fd-9106-f4ef87e07a6b")
 	)
-	(label "GND"
-		(at 266.7 386.08 0)
-		(effects
-			(font
-				(size 1.27 1.27)
-			)
-			(justify left bottom)
-		)
+	(no_connect
+		(at 266.7 386.08)
 		(uuid "4ed3563f-8a3c-5f07-8f36-22b1a7138e74")
 	)
 	(label "M9_AIN1"

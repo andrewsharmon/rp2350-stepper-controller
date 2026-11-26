@@ -141,7 +141,7 @@ def place(fp, x, y, rot=0, bottom=False):
 
 # JLCPCB's cheapest via class (no extra cost): 0.3 mm drill, used with a 0.52 mm
 # pad so the annular ring is 0.11 mm (JLCDFM flags 0.1 and under as danger).
-BIG_VIAS = {"single_sh_proto", "mod_driver"}
+BIG_VIAS = {"single_sh_proto", "mod_driver", "mod_mcu"}
 
 
 def jlc_rules(board, thickness=1.0, big_vias=False):
@@ -840,10 +840,12 @@ def md_xy(u, v):
     return CX - MD_W / 2 + u, CY - MD_H / 2 + v
 
 
-def place_header(fp, pin1, step, pin2):
+def place_header(fp, pin1, step, pin2, bottom=False):
     """Place a 2x20 so pin 1 lands on pin1 (u, v), pin 3 is one pitch along step
     (du, dv) and pin 2 one pitch along pin2 (du, dv). Tries the four rotations."""
     x1, y1 = md_xy(*pin1)
+    if bottom:
+        fp.Flip(fp.GetPosition(), pcbnew.FLIP_DIRECTION_TOP_BOTTOM)
     for rot in (0, 90, 180, 270):
         place(fp, 0, 0, rot=rot)
         pad = {p.GetNumber(): p.GetPosition() for p in fp.Pads()}
@@ -929,15 +931,253 @@ def mod_driver(board, fps):
     return placed
 
 
-BOARDS = {"controller": controller, "driver": driver, "single_sh": single_sh, "single_sh_proto": single_sh_proto, "mod_driver": mod_driver}
-LAYERS = {"controller": 4, "driver": 4, "single_sh": 4, "single_sh_proto": 4, "mod_driver": 4}
+# ---------------------------------------------------------------------------
+# mod_mcu: the stack's general-purpose RP2354B layer, same outline and bus
+# header positions as mod_driver. 4 layers: F parts + MCU fan-out to the bus,
+# In1 GND, In2 3V3 (+1V1 under the MCU), B the bus -> FFC branches.
+#
+# Male bus headers on the underside, pin for pin under mod_driver's J1 / J2.
+# MCU centred, rot 270: pads 1-20 (GPIO4-20) face bus A, 41-60 (GPIO33-47)
+# face bus B, 21-40 (GPIO21-32, crystal, SWD) face west and 61-80 (core
+# regulator, USB, QSPI, GPIO0-3) east. USB-C on the east edge, the 60-pin FFC
+# along the west edge with its cable going out west (it is the top layer, so
+# a flat cable can run off over the board).
+# ---------------------------------------------------------------------------
+
+MM_UM, MM_VM = 27.5, MD_H / 2     # MCU centre
+
+
+def mod_mcu(board, fps):
+    outline(board, MD_W, MD_H, 1.0)
+    placed = set()
+    taken = []
+    by_net = {}
+    for ref, fp in fps.items():
+        for pad in fp.Pads():
+            by_net.setdefault(pad.GetNetname(), set()).add(ref)
+
+    def refs(net, prefix, value=None):
+        return sorted((r for r in by_net.get(net, ()) if r.startswith(prefix)
+                       and (value is None or fps[r].GetValue() == value)),
+                      key=lambda r: int(r[len(prefix):]))
+
+    def one(net, prefix, value=None):
+        r = refs(net, prefix, value)
+        assert len(r) == 1, (net, prefix, value, r)
+        return r[0]
+
+    def crtyd(fp):
+        layer = pcbnew.B_CrtYd if fp.IsFlipped() else pcbnew.F_CrtYd
+        bb = fp.GetCourtyard(layer).BBox()
+        return [pcbnew.ToMM(v) for v in (bb.GetLeft(), bb.GetTop(), bb.GetRight(), bb.GetBottom())]
+
+    def clear(a):
+        x0, y0 = md_xy(0.3, 0.3)
+        x1, y1 = md_xy(MD_W - 0.3, MD_H - 0.3)
+        if a[0] < x0 or a[1] < y0 or a[2] > x1 or a[3] > y1:
+            return False
+        return all(a[2] <= b[0] or b[2] <= a[0] or a[3] <= b[1] or b[3] <= a[1] for b in taken)
+
+    def put(ref, u, v, rot=0, track=True):
+        place(fps[ref], *md_xy(u, v), rot=rot)
+        placed.add(ref)
+        if track:
+            taken.append(crtyd(fps[ref]))
+
+    def put_near(ref, u, v, rot=0, reach=8.0, gap=0.2):
+        fp = fps[ref]
+        steps = int(reach / 0.1)
+        for du, dv in sorted(((a, b) for a in range(-steps, steps + 1) for b in range(-steps, steps + 1)),
+                             key=lambda d: d[0] ** 2 + d[1] ** 2):
+            place(fp, *md_xy(u + du * 0.1, v + dv * 0.1), rot=rot)
+            a = crtyd(fp)
+            if clear([a[0] - gap, a[1] - gap, a[2] + gap, a[3] + gap]):
+                if du * du + dv * dv > 100:
+                    print(f"  {ref}: moved {du * 0.1:.1f}, {dv * 0.1:.1f}")
+                placed.add(ref)
+                taken.append(a)
+                return
+        print(f"  {ref}: no room near ({u}, {v}), left off the board")
+
+    taken_b = []
+
+    def put_bottom(ref, u, v, reach=10.0, gap=0.2):
+        """Copper-only parts (solder jumpers) on the underside, nearest free spot."""
+        fp = fps[ref]
+        if not fp.IsFlipped():
+            fp.Flip(fp.GetPosition(), pcbnew.FLIP_DIRECTION_TOP_BOTTOM)
+        steps = int(reach / 0.1)
+        for du, dv in sorted(((a, b) for a in range(-steps, steps + 1) for b in range(-steps, steps + 1)),
+                             key=lambda d: d[0] ** 2 + d[1] ** 2):
+            fp.SetPosition(pcbnew.VECTOR2I(*(MM(c) for c in md_xy(u + du * 0.1, v + dv * 0.1))))
+            q = crtyd(fp)
+            q = [q[0] - gap, q[1] - gap, q[2] + gap, q[3] + gap]
+            x0, y0 = md_xy(0.3, 0.3)
+            x1, y1 = md_xy(MD_W - 0.3, MD_H - 0.3)
+            if q[0] < x0 or q[1] < y0 or q[2] > x1 or q[3] > y1:
+                continue
+            if all(q[2] <= b[0] or b[2] <= q[0] or q[3] <= b[1] or b[3] <= q[1] for b in taken_b):
+                placed.add(ref)
+                taken_b.append(crtyd(fp))
+                return
+        print(f"  {ref}: no room on the underside near ({u}, {v})")
+
+    pin_u = lambda pos: MD_U0 + 2.54 * pos
+    # Bus headers on the underside, pin n under mod_driver's pin n. Their
+    # bodies are on B, so they don't block top-side parts (only the THT pads).
+    place_header(fps["J4"], (pin_u(19), MD_A_IN), (-1, 0), (0, -1), bottom=True)
+    place_header(fps["J5"], (pin_u(0), MD_H - MD_A_IN), (1, 0), (0, 1), bottom=True)
+    placed.update({"J4", "J5"})
+    for ref in ("J4", "J5"):        # keep top parts off the THT pads
+        for pad in fps[ref].Pads():
+            q = pad.GetPosition()
+            x, y = pcbnew.ToMM(q.x), pcbnew.ToMM(q.y)
+            taken.append([x - 0.9, y - 0.9, x + 0.9, y + 0.9])
+
+    # FFC along the west edge, cable side out (footprint +y -> -x at rot 270),
+    # pin 1 at the north end.
+    put("J6", 4.8, MD_H / 2, 270)
+
+    # USB-C on the east edge, mouth out; shell slots 0.1 mm wider as on the proto.
+    usb = fps["J1"]
+    for p in usb.Pads():
+        if p.GetAttribute() == pcbnew.PAD_ATTRIB_PTH:
+            d = p.GetDrillSize()
+            d = pcbnew.VECTOR2I(d.x + MM(0.1), d.y)
+            p.SetDrillSize(d)
+            p.SetSize(pcbnew.VECTOR2I(max(p.GetSize().x, d.x + MM(0.4)), max(p.GetSize().y, d.y + MM(0.4))))
+    place(usb, *md_xy(MD_W - 3.7, MM_VM + 2.0), rot=90)
+    bb = usb.GetCourtyard(pcbnew.F_CrtYd).BBox()
+    usb.Move(pcbnew.VECTOR2I(MM(md_xy(MD_W + 0.5, 0)[0]) - bb.GetRight(), 0))
+    placed.add("J1")
+    taken.append(crtyd(usb))
+
+    # MCU and its decoupling, 2.6 mm out from each supply pin (as on the proto).
+    um, vm = MM_UM, MM_VM
+    put("U1", um, vm, 270)
+    u1 = fps["U1"]
+    ox, oy = md_xy(um, vm)
+    pad_at = {p.GetNumber(): p.GetPosition() for p in u1.Pads()}
+    c3 = refs("/+3V3", "C", "100n")
+    c1 = refs("/+1V1", "C", "100n")
+    decoupling = list(zip(c3, ["5", "15", "24", "29", "41", "50", "59", "68", "76"])) + \
+        list(zip(c1, ["10", "32", "51"]))
+    # Core regulator at the MCU's +x, +y corner (pins 61-65): the proto's
+    # group, turned 180 degrees with the chip.
+    reg = {one("/+3V3", "C", "4.7u"): (7.4, 2.6, 0), "L1": (7.6, 5.8, 270),
+           one("/+1V1", "C", "4.7u"): (7.6, 8.6, 0),
+           one("/VREG_AVDD", "C", "4.7u"): (10.2, 5.8, 270), one("/VREG_AVDD", "R"): (11.9, 5.8, 270)}
+    for ref, (du, dv, r) in reg.items():
+        put_near(ref, um + du, vm + dv, r, reach=3.0)
+    for ref, pin in decoupling:
+        q = pad_at[pin]
+        px, py = pcbnew.ToMM(q.x) - ox, pcbnew.ToMM(q.y) - oy
+        side = abs(px) > abs(py)
+        fp = fps[ref]
+        for along in sorted((k * 0.05 for k in range(-80, 81)), key=abs):
+            if side:
+                x, y, r = ox + px + 2.6 * (1 if px > 0 else -1), oy + py + along, 0 if px > 0 else 180
+            else:
+                x, y, r = ox + px + along, oy + py + 2.6 * (1 if py > 0 else -1), 270 if py > 0 else 90
+            place(fp, x, y, rot=r)
+            a = crtyd(fp)
+            if clear([a[0] - 0.15, a[1] - 0.15, a[2] + 0.15, a[3] + 0.15]):
+                break
+        else:
+            raise SystemExit(f"no room for {ref} by U1 pin {pin}")
+        taken.append(crtyd(fp))
+        placed.add(ref)
+
+    # Report where the GPIO pads ended up, to check the counter-clockwise run.
+    g0, g20, g47 = (pad_at[n] for n in ("77", "20", "60"))
+    print("  MCU GPIO0 at (%.1f, %.1f), GPIO20 at (%.1f, %.1f), GPIO47 at (%.1f, %.1f)" % tuple(
+        pcbnew.ToMM(c) - o for q in (g0, g20, g47) for c, o in ((q.x, CX - MD_W / 2), (q.y, CY - MD_H / 2))))
+
+    # Routing room kept free of parts:
+    # - Bus bands along each header. The MCU's buses run on F.Cu out of its
+    #   north / south faces to the band, then along it to their pins; only a
+    #   few lines reach the board ends, so the bands are thin there and wider
+    #   in the MCU's column. B.Cu carries the header -> FFC branches.
+    # - The FFC's via field (its pads are on F.Cu, the branches arrive on B.Cu).
+    # - The GPIO20-27 channel: from the MCU's north-west corner and west face
+    #   down to bus B's west end, outside the crystal.
+    H = MD_H
+    keep = [(7.6, 5.0, MD_W, 8.5), (7.6, H - 8.5, MD_W, H - 5.0),
+            (21.0, 8.5, 34.0, 15.0), (21.0, H - 15.0, 34.0, H - 8.5),
+            (7.6, 5.8, 10.8, H - 5.8), (10.8, 17.0, 13.2, H - 8.5)]
+    for u0, v0, u1, v1 in keep:
+        taken.append([*md_xy(u0, v0), *md_xy(u1, v1)])
+    # The underside: same routing room, plus the bus headers' bodies and the
+    # USB-C's legs.
+    taken_b.extend(taken)
+
+    def group(parts, reach=2.0):
+        for ref, (u, v, r) in parts.items():
+            put_near(ref, u, v, r, reach=reach)
+
+    # Crystal in the pocket by XIN / XOUT (pins 30 / 31, mid west face).
+    group({"Y1": (16.4, vm + 0.6, 90), one("/XOUT", "R"): (19.2, vm + 4.0, 90),
+           one("/XIN", "C", "15p"): (16.4, vm - 2.4, 0), one("/XTAL_OUT", "C", "15p"): (16.4, vm + 3.6, 0)})
+
+    # East block: USB-C (placed) and its parts, power path, Qwiic, BOOTSEL.
+    vu = MM_VM + 2.0
+    group({"U2": (45.0, vu, 90),
+           one("/USB_DP_MCU", "R"): (42.4, vu - 0.6, 0), one("/USB_DM_MCU", "R"): (42.4, vu + 0.6, 0),
+           refs("/CC1", "R")[0]: (45.0, vu - 3.0, 0), refs("/CC2", "R")[0]: (45.0, vu + 3.0, 0),
+           "F1": (47.5, 18.8, 0), "D1": (44.0, 15.5, 0),
+           "U3": (40.0, 10.6, 0), one("/V5_IN", "C", "1u"): (37.6, 10.6, 90),
+           refs("/+3V3", "C", "1u")[0]: (42.4, 10.6, 90),
+           "Q1": (38.8, 15.4, 0), one("/V5_IN", "C", "10u"): (38.4, 18.8, 0),
+           one("/SS_GATE", "C"): (41.2, 18.6, 90), one("/SS_GATE", "R"): (42.4, 18.6, 90),
+           "SW3": (47.3, 10.4, 0)}, reach=3.0)
+
+    # South-east, by GPIO45 (south face, east end): status LED and buffer;
+    # LED_DOUT leaves on bus B's outer row.
+    group({"D2": (42.4, 35.0, 0), "U4": (37.0, 35.4, 90),
+           refs("/V5", "C", "100n")[0]: (37.0, 32.6, 0), refs("/V5", "C", "100n")[1]: (46.2, 32.6, 90)}, reach=3.0)
+
+    # South-west, under the crystal pocket: the two ladder buttons.
+    # Ladder buttons: one under the crystal pocket, one in the north-west corner.
+    group({"SW1": (16.6, 35.8, 90), "SW2": (16.6, 12.0, 0)}, reach=3.0)
+    # Qwiic in the south-east corner, by GPIO46 / 47 (south face, east end).
+    group({"J2": (51.7, 35.0, 0)}, reach=2.0)
+
+    near = [
+        (one("/BTN1_N", "R"), "SW1"), (one("/BTN2_N", "R"), "SW2"), (one("/BOOT_R", "R"), "SW3"),
+        (one("/LADDER", "R"), "SW2"), (one("/LADDER", "C"), "SW2"), (one("/ID_PU", "R"), "D2"),
+        (refs("/I2C_PU", "R")[0], "J2"), (refs("/I2C_PU", "R")[1], "J2"),
+    ]
+    for ref, anchor in near:
+        q = fps[anchor].GetPosition()
+        put_near(ref, pcbnew.ToMM(q.x) - (CX - MD_W / 2), pcbnew.ToMM(q.y) - (CY - MD_H / 2), 0, reach=12.0)
+    # Solder jumpers (copper only) on the underside, under what they serve.
+    # Set them before the board goes into the stack.
+    for net, anchor in [("/CC1", "U2"), ("/CC2", "U2"), ("/LADDER", "SW1"), ("/ID_PU", "D2"),
+                        ("/LED_DIN", "U4"), ("/I2C_PU", "J2"), ("/QWIIC_3V3", "J2"), ("/V5_FFC", "Y1")]:
+        q = fps[anchor].GetPosition()
+        put_bottom(one(net, "JP"), pcbnew.ToMM(q.x) - (CX - MD_W / 2), pcbnew.ToMM(q.y) - (CY - MD_H / 2))
+    # Test pads: SWD / RUN in the pocket's south end by their pins (33-35),
+    # supplies by the power path.
+    tp = {fps[r].GetValue(): r for r in fps if r.startswith("TP")}
+    for name, (u, v) in {"SWCLK": (19.4, vm + 6.6), "SWDIO": (17.2, vm + 6.6), "RUN": (15.0, vm + 6.6),
+                         "GND": (15.0, vm + 4.6), "+3V3": (15.0, vm - 4.0), "+1V1": (37.0, vm + 9.0),
+                         "VBUS": (50.0, 19.0), "V5_IN": (36.8, 13.2), "V5": (36.8, 20.6)}.items():
+        put_near(tp[name], u, v, 0, reach=12.0)
+    for fp in fps.values():
+        fp.Reference().SetVisible(False)
+    return placed
+
+
+BOARDS = {"controller": controller, "driver": driver, "single_sh": single_sh, "single_sh_proto": single_sh_proto, "mod_driver": mod_driver, "mod_mcu": mod_mcu}
+LAYERS = {"controller": 4, "driver": 4, "single_sh": 4, "single_sh_proto": 4, "mod_driver": 4, "mod_mcu": 4}
 # Outline (w, h) in mm and board thickness.
 SIZES = {"controller": (30.0, 30.0, 1.0), "driver": (30.0, 30.0, 1.0), "single_sh": (SH_L, SH_W, 1.6),
-         "single_sh_proto": (SP_L, SP_W, 1.6), "mod_driver": (MD_W, MD_H, 1.6)}
+         "single_sh_proto": (SP_L, SP_W, 1.6), "mod_driver": (MD_W, MD_H, 1.6), "mod_mcu": (MD_W, MD_H, 1.6)}
 ZONES = {"controller": [("/GND", pcbnew.In1_Cu), ("/+3V3", pcbnew.In2_Cu)],
          "driver": [("/GND", pcbnew.In1_Cu), ("/V5", pcbnew.In2_Cu)],
          "single_sh": [("GND", pcbnew.In1_Cu)], "single_sh_proto": [("GND", pcbnew.In1_Cu)],
-         "mod_driver": [("/GND", pcbnew.In1_Cu), ("/V5", pcbnew.In2_Cu)]}      # global power nets; In2 zones: see single_sh()
+         "mod_driver": [("/GND", pcbnew.In1_Cu), ("/V5", pcbnew.In2_Cu)],
+         "mod_mcu": [("/GND", pcbnew.In1_Cu), ("/+3V3", pcbnew.In2_Cu)]}      # global power nets; In2 zones: see single_sh()
 
 
 def build(name, out_dir):

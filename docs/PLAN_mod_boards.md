@@ -1,8 +1,8 @@
 # Modular boards (`mod_*`): separation plan
 
-> **Status: plan, rev 4, 2026-11-26.** Branch `mod-boards`.
-> - `mod_driver`: netlist (`mod_driver()` in `gen/build.py`, label-only for now) and placement (`mod_driver()` in `gen/pcbgen.py`) done, unrouted. The outline is **56 x 47.18 mm**.
-> - Next: the `mod_driver` wired schematic and routing, then `mod_mcu` on the same outline.
+> **Status: plan, rev 5, 2026-11-26.** Branch `mod-boards`.
+> - `mod_driver` and `mod_mcu`: netlists (`gen/build.py`, label-only for now) and placements (`gen/pcbgen.py`) done, unrouted. Both are **56 x 47.18 mm**.
+> - Next: wired schematics and routing, then `mod_motor` on the same outline.
 
 The fabricated `single_sh_proto` (150 x 30 mm, ordered 2026-10-11, board 1
 brought up 2026-10-21) is split into a stack of three boards.
@@ -85,8 +85,10 @@ Each header puts signals on its inner row (toward the board centre) and power on
 
 | Header | Inner row (20) | Outer row (20) |
 |---|---|---|
-| A | GPIO0-19 = M1-M5 | 10 GND, 4 V5, 2 3V3, RUN, SWCLK, SWDIO, LED_DOUT |
-| B | GPIO20-39 = M6-M10 | GPIO40-47 (utilities), 7 GND, 3 V5, 1 3V3 |
+| A | GPIO0-19 = M1-M5 | 11 GND, 4 V5, 2 3V3, RUN, SWCLK, SWDIO |
+| B | GPIO20-39 = M6-M10 | GPIO40-47 (utilities), LED_DOUT, 7 GND, 3 V5, 1 3V3 |
+
+LED_DOUT is on B because the status LED sits by GPIO45, on the MCU's bus B side.
 
 - `LED_DOUT` is the status LED's data out. The LED strip on the bottom layer chains after it, as on the proto.
 - RUN and SWD on the bus let a lower layer reset or debug the MCU.
@@ -100,11 +102,18 @@ Each header puts signals on its inner row (toward the board centre) and power on
   - The motor turns the same way, one full step on, so the firmware is unchanged.
   - In return, the inputs need no crossings at all.
 
-## FFC port (draft)
+## FFC port
 
-60 pins, 0.5 mm: GPIO0-47 in pad order, 9 GND interleaved, 1 3V3, 2 V5.
+60 pins, 0.5 mm, along `mod_mcu`'s west edge with pin 1 at the north end. Pinout: `mod_ffc()` in `gen/build.py`.
 
-- V5 goes out through a small polyfuse (~0.5 A hold) on `mod_mcu`, because each conductor is rated 400 mA. A remote motor layer has to bring its own 5 V.
+- All 48 GPIO, 9 GND (one after every 6 signals), 1 3V3, and 2 V5_FFC pins.
+- **Pin order** is whatever routes from the bus header pins to the FFC on B.Cu without crossing:
+  - GPIO19..0 (header A, west to east).
+  - Then header B's GPIOs, east to west, with the outer-row utilities fitted between the inner pins they pass.
+- **V5_FFC comes through an open solder jumper,** so by default there's no V5 on the FFC. Bridged it is unfused: 2 conductors at 400 mA each. That was decision 4, settled on cost; a remote motor layer brings its own 5 V.
+- **Part:** HanElectricity 05A20L60P (C22435645, $0.15 at 50). The Amphenol F32Q 60P has a KiCad footprint but costs $1.21 and had 9 in stock.
+  - Its footprint (`stack:FFC_0.5mm_60P_FlipTop`, written by `gen/footprints.py`) uses the Hirose FH12 land pattern. The 05A20L60P drawing couldn't be read (LCSC's viewer has no text; JLCEDA's footprint API now blocks scripts).
+  - **Check the pads against its drawing before ordering.**
 - It is meant for an optional **`mod_ffc` adapter**: a small 2-layer board with the FFC socket and the two bus headers, plus a 5 V input. It rebuilds the mod bus at the far end of the cable, so `mod_driver` + `mod_motor` (or any other layer) can sit away from the MCU without any change to them. The adapter is a later board, not part of the first three.
 - Cable: use a contacts-on-opposite-sides FFC (type B) so pin 1 maps to pin 1. Decide this when the adapter is drawn.
 
@@ -112,12 +121,12 @@ Each header puts signals on its inner row (toward the board centre) and power on
 
 ### `mod_mcu`: general-purpose MCU layer
 
-`controller()` from `gen/build.py`, plus the FFC. Proto refs:
+`mod_mcu()` in `gen/build.py`: `controller()`'s circuit rebuilt with generic GPIO net names, plus the FFC. Proto refs:
 
 - **MCU core:** U11, decoupling C35-C48, core regulator L1 / R24 / C49, crystal Y1 / C50 / C51 / R25.
 - **USB and power path:** J1, U12 (ESD), R26 / R27, CC R28 / R29, F1, D1, C52 / C53, LDO U13 / C55, soft-start Q1 / C54 / R30.
 - **Generic UI:**
-  - Qwiic: J2 / J3 / JP1 / JP2 / R31 / R32.
+  - Qwiic: **one** connector (proto J2 / J3: two) plus the supply jumper and the I2C pull-ups. Qwiic devices daisy-chain, and the second connector didn't fit.
   - BOOTSEL SW3 / R36.
   - Status LED U14 / D2 / C57 / C58.
   - Ladder pull-up R33 / C56 with on-board buttons SW1 / R34 and SW2 / R35.
@@ -138,6 +147,17 @@ To keep it general, every on-board function on GPIO40-47 sits behind a
 
 GPIO0-39 have nothing on `mod_mcu`. GPIO40-47 are the RP2354B's ADC pins,
 which is why the on-board analog functions sit there.
+
+All eight solder jumpers (the five above, I2C_PU, QWIIC_SUPPLY, FFC_V5) are
+on the **underside**. They're copper only, so they cost nothing there. Set
+them before the board goes into the stack.
+
+Part changes from the proto, for cost and size:
+- **0402 passives.** USB series resistors are 22 ohm 0402 (C25092, basic); the 27 ohm 0402 is extended.
+- **V5_IN bulk:** 10 uF 0603.
+- **F1:** a 1206 1.5 A polyfuse (SMD1206B150TFT, C269120, 8 V) instead of the 1812. Both are extended.
+- **D1 stays SS54 (SMA):** every basic Schottky rated 2 A or more is SMA.
+- **L1 is the Abracon AOTA-B201610S3R3-101-T again** (C42411119), back in stock (5130, 2026-11-26). That's the part the RP2350 design guide validated.
 
 ### `mod_driver`: H-bridge layer
 
@@ -176,9 +196,10 @@ This is the old tier-3 `io_board()`. The stepper-specific IO moves here from
 1. ~~Outline~~: 56 x 47.18 mm from the `mod_driver` placement. `mod_mcu` (MCU, USB-C, power, 60P FFC between the bus headers) and `mod_motor` (5 SH plugs) still have to fit it. If the plugs don't fit `mod_motor`'s two free short edges, they go on its underside (top-entry BM08B), or `mod_motor` overhangs.
 2. **Motor plug edge** on `mod_motor`: a short edge, or move the bus headers inboard.
 3. ~~Stacking header for the motor outputs~~: settled, stacking header (see Parts).
-4. **FFC V5 limit:** a 0.5 A polyfuse, or a solder jumper (no V5 on the FFC by default).
+4. ~~FFC V5 limit~~: an open solder jumper (no V5 on the FFC by default), for cost.
 5. **`mod_driver` on 2 layers?** Cheaper, but the proto's cells lean on In1 GND / In2 V5. Default 4.
-6. **Inductor L1:** check whether the Abracon AOTA is back in stock before keeping the CMLW substitute. Take the proto's 1V1 ripple result into account.
+6. ~~Inductor L1~~: the Abracon AOTA is back in stock, so `mod_mcu` uses it.
+7. **FFC footprint:** check the FH12-derived land pattern against the 05A20L60P drawing.
 
 ## `mod_driver` placement (2026-11-26)
 
@@ -195,6 +216,37 @@ Generated by `gen/pcbgen.py mod_driver`; parts only, no copper yet.
   - NSLEEP and LADDER (nFAULT) are multi-drop nets. Route them as spines, as on the proto.
 - DRC: no courtyard or clearance errors; all 259 connections still unrouted.
 - **BOM:** 63 placements, 9 lines. Basic: the 0402 / 0603 passives. Extended: AT8833CQ (C5120769) and the stacking header (C35165, 3 per board).
+
+## `mod_mcu` placement (2026-11-26)
+
+Generated by `gen/pcbgen.py mod_mcu`; all 73 footprints placed, no courtyard or clearance errors, unrouted.
+
+**Layout:**
+- **Bus headers:** the male headers sit on the underside, pin for pin under `mod_driver`'s J1 / J2.
+- **MCU:** centred, rot 270, so its pads run counter-clockwise like the bus. Checked: GPIO0 at the north-east, GPIO20 at the north-west, GPIO47 at the south-east.
+- **West edge:** the FFC, with its cable going out west. It's the top layer, so a flat cable can run off over the board.
+- **East edge:** USB-C, with the power path, BOOTSEL and the ESD / CC parts between it and the MCU.
+- **Corners:** the Qwiic connector and the status LED (with its buffer) south-east, by GPIO45-47. The crystal sits in the pocket by XIN / XOUT. One ladder button is south-west, the other north-west.
+- **Decoupling and core regulator:** as on the proto, turned with the chip.
+
+**Routing room is kept free of parts:**
+- A band along each bus header.
+- The MCU's north and south columns.
+- The FFC's via field, which takes the B.Cu branches up to its pads.
+- A channel for GPIO20-27, from the MCU's north-west corner down to bus B's west end, outside the crystal.
+
+**Routing plan.** Straight-line checks:
+- **B.Cu** (bus pins to FFC): 15 crossings over 48 lines, so the FFC order mostly works.
+- **F.Cu** (MCU to bus): the crossings concentrate on:
+  - GPIO40-47, which run to bus B's outer row and have to pass the inner-row lines.
+  - RUN / SWD, from the west face to bus A's outer row.
+  - The GPIO20-27 wrap.
+
+  These need short layer hops. **In2 is therefore 3V3 (+1V1) under the MCU only, as on the proto, and a signal layer under the bus bands.** In1 stays solid GND.
+
+**Tidy by hand:** one I2C pull-up (R9) landed at the east end of bus B's inner row.
+
+**BOM:** 1 RP2354B, 2 bus headers (C3012260), the 60P FFC, USB-C, 1 Qwiic, 3 buttons. Passives are 0402 basic, except 10 uF 0603 and the 1206 polyfuse. The 5050 status LED is hand-soldered on an Economic order, as on the proto.
 
 ## Work plan
 

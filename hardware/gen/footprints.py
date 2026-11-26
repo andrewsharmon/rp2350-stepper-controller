@@ -13,6 +13,14 @@ Pin 1 at -X, odd pins on one row and even on the other. The header goes on
 the underside of the upper board, where KiCad's flip mirrors Y, so its odd
 row is drawn at +Y: after the flip, header pin n sits over socket pin n.
 The connector is not polarized; the stack is keyed by connector placement.
+
+FFC_0.5mm_60P_FlipTop: 0.5 mm pitch, 60-pin flip-top FFC/FPC socket for the
+mod_mcu FFC port (HanElectricity 05A20L60P, LCSC C22435645). The land
+pattern is Hirose FH12's (KiCad's Hirose_FH12-50S footprint, extended to 60
+pins): signal pads 0.3 x 1.3 at the rear, fixing pads 1.8 x 2.2 1.9 mm beyond
+the end pins and 3.25 mm forward, body to 4.4 mm forward of the origin where
+the cable goes in. The 05A20L60P drawing couldn't be read when this was
+written (2026-11-26): CHECK the pads against it before ordering.
 """
 
 import os
@@ -102,10 +110,37 @@ def footprint(kind, n):
     return name, dump(fp) + "\n"
 
 
+def ffc(n=60, pitch=0.5):
+    """0.5 mm flip-top FFC socket, FH12 land pattern. Pin 1 at -X, cable enters from +Y."""
+    name = f"FFC_0.5mm_{n}P_FlipTop"
+    span = (n - 1) * pitch
+    mp_x = span / 2 + 1.9
+    fp = [Sym("footprint"), name, [Sym("version"), 20240108], [Sym("generator"), "stack_gen"],
+          [Sym("layer"), "F.Cu"],
+          [Sym("descr"), f"0.5 mm pitch {n}-pin flip-top FFC/FPC socket, Hirose FH12 land pattern "
+                         "(HanElectricity 05A20L60P, LCSC C22435645: check pads against its drawing)"],
+          [Sym("attr"), Sym("smd")],
+          text("Reference", "REF**", -3.4, "F.SilkS"),
+          text("Value", name, 5.4, "F.Fab")]
+    for i in range(n):
+        fp.append(smd(str(i + 1), round(-span / 2 + i * pitch, 3), -1.85, 0.3, 1.3))
+    for sx in (-1, 1):
+        fp.append(smd("MP", round(sx * mp_x, 3), 1.4, 1.8, 2.2))
+    a = round(mp_x - 0.1, 3)
+    fp.append(rect("F.Fab", -a, -1.3, a, 4.4, 0.1))
+    cx = round(mp_x + 0.9 + 0.25, 3)
+    fp.append(rect("F.CrtYd", -cx, -2.75, cx, 4.65, 0.05))
+    fp.append([Sym("fp_circle"), [Sym("center"), round(-span / 2 - 0.6, 3), -2.2],
+               [Sym("end"), round(-span / 2 - 0.5, 3), -2.2],
+               [Sym("stroke"), [Sym("width"), 0.1], [Sym("type"), Sym("solid")]],
+               [Sym("fill"), Sym("yes")], [Sym("layer"), "F.SilkS"]])
+    return name, dump(fp) + "\n"
+
+
 def main():
     os.makedirs(OUT, exist_ok=True)
-    for kind in VARIANTS:
-        name, text_ = footprint(kind, PINS)
+    items = [footprint(kind, PINS) for kind in VARIANTS] + [ffc()]
+    for name, text_ in items:
         with open(os.path.join(OUT, name + ".kicad_mod"), "w") as f:
             f.write(text_)
         print("wrote", name)

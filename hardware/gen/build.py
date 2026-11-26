@@ -93,6 +93,7 @@ PASSIVES = {
     ("15p", C0402): ("C1548", "0402CG150J500NT"),        # 50 V C0G
     ("10u", C0805): ("C15850", "CL21A106KAYNNNE"),       # 25 V X5R
     ("1", R0603): ("C22936", "0603WAF100KT5E"),          # UniOhm 1 %, 100 mW, basic (no basic 0.82R)
+    ("22", R0402): ("C25092", "0402WGF220JTCE"),         # mod_mcu USB series (27R 0402 is extended)
     ("27", R0402): ("C25100", "0402WGF270JTCE"),         # extended
     ("33", R0402): ("C25105", "0402WGF330JTCE"),
     ("1k", R0402): ("C11702", "0402WGF1001TCE"),
@@ -467,9 +468,10 @@ def sh_motor_pair_nested(s, m):
 # the -x end.
 
 MOD_BUS_A_OUTER = ["V5", "V5", "GND", "+3V3", "GND", "RUN", "GND", "SWCLK", "GND", "SWDIO",
-                   "GND", "LED_DOUT", "GND", "+3V3", "GND", "GND", "GND", "V5", "GND", "V5"]
+                   "GND", "GND", "GND", "+3V3", "GND", "GND", "GND", "V5", "GND", "V5"]
+# LED_DOUT is on B: the status LED sits by GPIO45, on the MCU's B-facing side.
 MOD_BUS_B_OUTER = ["V5", "V5", "GND", 40, 41, "GND", 42, 43, "GND", 44,
-                   45, "GND", 46, 47, "GND", "+3V3", "GND", "GND", "GND", "V5"]
+                   45, "GND", 46, 47, "LED_DOUT", "+3V3", "GND", "GND", "GND", "V5"]
 # 2x20 2.54 mm: stacking female with 12.3 mm tails (mod_driver, all three
 # headers, so they mate mod_motor at one height), plain male (mod_mcu
 # underside), plain female (mod_motor top).
@@ -482,7 +484,7 @@ def mod_bus(header, gpio_net):
     """40 nets for bus header 'A' or 'B'; gpio_net(n) names GPIO n on this board (None: not used)."""
     inner = range(0, 20) if header == "A" else range(20, 40)
     outer = MOD_BUS_A_OUTER if header == "A" else MOD_BUS_B_OUTER
-    assert len(outer) == 20 and outer.count("GND") == (10 if header == "A" else 8)
+    assert len(outer) == 20 and outer.count("GND") == (11 if header == "A" else 7)
     nets = []
     for g, o in zip(inner, outer):
         # Rails are on every board; the named signals (RUN, SWD, LED_DOUT) map like GPIOs.
@@ -547,6 +549,165 @@ def mod_driver():
     return s
 
 
+def mod_ffc():
+    """60-pin FFC port on mod_mcu, pin 1 at the north (-y) end of the board's
+    west edge. Order is what routes without crossing on mod_mcu's B.Cu from
+    the bus header pins: header A's GPIOs run south then west (west-most pin
+    nearest the north), header B's north then west (east-most pin nearest the
+    north; the outer-row utilities squeeze between the inner pins). A GND
+    after every 6 signals; V5_FFC (behind a solder jumper) at the north end."""
+    a = list(range(19, -1, -1))
+    keys = {20 + p: p for p in range(20)}
+    keys.update({g: k + 0.5 for k, g in enumerate(MOD_BUS_B_OUTER) if isinstance(g, int)})
+    b = sorted(keys, key=lambda g: -keys[g])
+    sig = a + b
+    nets = ["V5_FFC", "V5_FFC", "GND"]
+    for i, g in enumerate(sig):
+        nets.append(f"GPIO{g}")
+        if i % 6 == 5 and i < len(sig) - 1:
+            nets.append("GND")
+    nets += ["+3V3", "GND"]
+    assert len(nets) == 60 and nets.count("GND") == 9, (len(nets), nets.count("GND"))
+    return nets
+
+
+def mod_mcu():
+    """General-purpose RP2354B layer: controller() minus the stack-specific
+    parts, 0402 passives, all 48 GPIO on the mod bus and the FFC. Every
+    on-board function on GPIO40-47 sits behind a bridged solder jumper."""
+    s = Schematic("mod_mcu", "Mod stack - RP2354B layer (general purpose)")
+    gp = lambda g: f"GPIO{g}"
+    mcu = {f"GPIO{g}": gp(g) for g in range(40)}
+    mcu.update({f"GPIO{g}/ADC{g - 40}": gp(g) for g in range(40, 48)})
+    mcu.update({
+        "IOVDD": "+3V3", "QSPI_IOVDD": "+3V3", "USB_OTP_VDD": "+3V3", "ADC_AVDD": "+3V3", "VREG_VIN": "+3V3",
+        "VREG_AVDD": "VREG_AVDD", "DVDD": "+1V1", "VREG_FB": "+1V1", "VREG_LX": "VREG_LX",
+        "VREG_PGND": "GND", "GND": "GND",
+        "XIN": "XIN", "XOUT": "XOUT", "USB_DP": "USB_DP_MCU", "USB_DM": "USB_DM_MCU",
+        "RUN": "RUN", "SWCLK": "SWCLK", "SWDIO": "SWDIO", "~{QSPI_SS}": "QSPI_SS",
+    })
+    s.add("MCU_RaspberryPi:RP2354B", "U", "RP2354B", "Package_DFN_QFN:QFN-80-1EP_10x10mm_P0.4mm_EP3.4x3.4mm",
+          mcu, LCSC="C39843328", MPN="RP2354B",
+          Note="2 MB in-package flash; leave QSPI_SD0-3/SCLK unconnected")
+
+    # Supply decoupling and core regulator (RP2350 hardware design guide).
+    for _ in range(9):
+        C(s, "100n", "+3V3", "GND")
+    C(s, "4.7u", "+3V3", "GND")
+    for _ in range(3):
+        C(s, "100n", "+1V1", "GND")
+    C(s, "4.7u", "+1V1", "GND")
+    # The Abracon AOTA (the part the design guide validated) is back in stock
+    # at JLCPCB (5130, 2026-11-26), so mod_mcu uses it, not the proto's CMLW.
+    s.add("Device:L", "L", "3.3u", "Inductor_SMD:L_Cenker_CKCS201610", {"1": "VREG_LX", "2": "+1V1"},
+          LCSC="C42411119", MPN="AOTA-B201610S3R3-101-T",
+          Note="Abracon part per RP2350 design guide; dot at the +1V1 end, as on the Pico 2")
+    R(s, "33", "+3V3", "VREG_AVDD")
+    C(s, "4.7u", "VREG_AVDD", "GND")
+
+    s.add("Device:Crystal_GND24", "Y", "12MHz", "Crystal:Crystal_SMD_3225-4Pin_3.2x2.5mm",
+          {"1": "XIN", "3": "XTAL_OUT", "2": "GND", "4": "GND"}, LCSC="C20625731", MPN="ABM8-272-T3",
+          Note="Abracon, per RP2350 design guide; other crystals need retuning and testing")
+    C(s, "15p", "XIN", "GND")
+    C(s, "15p", "XTAL_OUT", "GND")
+    R(s, "1k", "XOUT", "XTAL_OUT")
+
+    # USB-C, ESD, series resistors (22R: the 27R 0402 is extended), CC.
+    s.add("Connector:USB_C_Receptacle_USB2.0_16P", "J", "USB-C", "Connector_USB:USB_C_Receptacle_HRO_TYPE-C-31-M-12",
+          {"VBUS": "VBUS", "GND": "GND", "CC1": "CC1", "CC2": "CC2", "D+": "USB_DP", "D-": "USB_DM", "SHIELD": "GND"},
+          ref="J1", LCSC="C165948", MPN="TYPE-C-31-M-12", Note="THT shell legs")
+    s.add("Power_Protection:TPD2E2U06DRL", "U", "TPD2E2U06", "Package_TO_SOT_SMD:SOT-553",
+          {"3": "USB_DP", "5": "USB_DM", "4": "GND"},
+          LCSC="C1972959", MPN="TPD2E2U06DRLR", Note="TI; 1.5 pF; pins 1-2 NC")
+    R(s, "22", "USB_DP", "USB_DP_MCU")
+    R(s, "22", "USB_DM", "USB_DM_MCU")
+    R(s, "5.1k", "CC1", "GND")
+    R(s, "5.1k", "CC2", "GND")
+    s.add("Jumper:SolderJumper_2_Bridged", "JP", "CC1", JP_BRIDGED, {"1": "CC1", "2": gp(40)},
+          Note="cut to free GPIO40 (CC1 sense)", in_bom=False)
+    s.add("Jumper:SolderJumper_2_Bridged", "JP", "CC2", JP_BRIDGED, {"1": "CC2", "2": gp(41)},
+          Note="cut to free GPIO41 (CC2 sense)", in_bom=False)
+
+    # Power path: VBUS -> PTC -> Schottky -> V5_IN -> soft-start -> V5 bus; LDO from V5_IN.
+    s.add("Device:Polyfuse", "F", "1.5A hold", "Fuse:Fuse_1206_3216Metric", {"1": "VBUS", "2": "VBUS_F"},
+          MPN="SMD1206B150TFT", LCSC="C269120", Note="PTTC; 1.5 A hold / 3 A trip, 8 V; 1206 for room")
+    s.add("Device:D_Schottky", "D", "SS54", SMA, {"2": "VBUS_F", "1": "V5_IN"},
+          LCSC="C22452", MPN="SS54", Note="MDD; Vf 0.55 V @ 5 A (every basic >= 2 A Schottky is SMA)")
+    C(s, "10u", "V5_IN", "GND", C0603)
+    s.add("Regulator_Linear:ME6211C33M5", "U", "ME6211C33M5G", SOT23_5,
+          {"1": "V5_IN", "3": "V5_IN", "2": "GND", "5": "+3V3"}, LCSC="C82942", MPN="ME6211C33M5G-N")
+    C(s, "1u", "V5_IN", "GND")
+    s.add("Transistor_FET:AO3401A", "Q", "AO3401A", "Package_TO_SOT_SMD:SOT-23",
+          {"S": "V5_IN", "D": "V5", "G": "SS_GATE"}, LCSC="C15127", MPN="AO3401A",
+          Note="AOS; 60 mohm @ 4.5 V, Vth ~0.9 V")
+    C(s, "100n", "V5_IN", "SS_GATE", Note="soft-start timing with the 100k")
+    R(s, "100k", "SS_GATE", "GND", Note="soft-start timing with the 100n")
+    C(s, "1u", "+3V3", "GND")
+
+    # One Qwiic on I2C1 (GPIO46/47; Qwiic devices daisy-chain, and the second
+    # one the proto had didn't fit); no power in (the LDO back-feeds V5).
+    for _ in range(1):
+        s.add("Connector_Generic:Conn_01x04", "J", "Qwiic", "Connector_JST:JST_SH_BM04B-SRSS-TB_1x04-1MP_P1.00mm_Vertical",
+              {"1": "GND", "2": "QWIIC_3V3", "3": gp(46), "4": gp(47)}, LCSC="C160390", MPN="BM04B-SRSS-TB")
+    s.add("Jumper:SolderJumper_2_Open", "JP", "QWIIC_SUPPLY", JP_OPEN, {"1": "+3V3", "2": "QWIIC_3V3"},
+          Note="bridge to power downstream Qwiic devices", in_bom=False)
+    R(s, "4.7k", gp(46), "I2C_PU")
+    R(s, "4.7k", gp(47), "I2C_PU")
+    s.add("Jumper:SolderJumper_2_Bridged", "JP", "I2C_PU", JP_BRIDGED, {"1": "I2C_PU", "2": "+3V3"},
+          Note="cut to remove the I2C pull-ups", in_bom=False)
+
+    # Ladder on GPIO44: pull-up, filter and the two buttons; nFAULT (mod_driver)
+    # and the e-stop / panel buttons (mod_motor) join on the bus.
+    R(s, "10k 1%", "+3V3", "LADDER")
+    C(s, "100n", "LADDER", "GND")
+    s.add("Switch:SW_Push", "SW", "BTN1", "Button_Switch_SMD:SW_SPST_TS-1088-xR020",
+          {"1": "LADDER", "2": "BTN1_N"}, LCSC="C720477", MPN="TS-1088-AR02016", Note="XUNPU 3.9x3.0 mm 2-pad")
+    R(s, "10k 1%", "BTN1_N", "GND")
+    s.add("Switch:SW_Push", "SW", "BTN2", "Button_Switch_SMD:SW_SPST_TS-1088-xR020",
+          {"1": "LADDER", "2": "BTN2_N"}, LCSC="C720477", MPN="TS-1088-AR02016", Note="XUNPU 3.9x3.0 mm 2-pad")
+    R(s, "3.3k 1%", "BTN2_N", "GND")
+    s.add("Jumper:SolderJumper_2_Bridged", "JP", "LADDER", JP_BRIDGED, {"1": "LADDER", "2": gp(44)},
+          Note="cut to free GPIO44 (ladder, buttons)", in_bom=False)
+
+    s.add("Switch:SW_Push", "SW", "BOOTSEL", "Button_Switch_SMD:SW_SPST_TS-1088-xR020",
+          {"1": "QSPI_SS", "2": "BOOT_R"}, LCSC="C720477", MPN="TS-1088-AR02016",
+          Note="XUNPU 3.9x3.0 mm 2-pad, same as BTN1/BTN2")
+    R(s, "1k", "BOOT_R", "GND")
+
+    # Board-ID pull-up on GPIO43 (the ID resistor to GND is on mod_motor).
+    R(s, "10k 1%", "+3V3", "ID_PU")
+    s.add("Jumper:SolderJumper_2_Bridged", "JP", "BOARD_ID", JP_BRIDGED, {"1": "ID_PU", "2": gp(43)},
+          Note="cut to free GPIO43 (board-ID pull-up)", in_bom=False)
+
+    # Status LED on GPIO45, first in the chain; DOUT goes out on the bus as
+    # LED_DOUT. 5050 part: every WS2812 is JLCPCB Standard-PCBA only, so on an
+    # Economic order it is hand-soldered, as on the proto.
+    s.add("Jumper:SolderJumper_2_Bridged", "JP", "LED", JP_BRIDGED, {"1": gp(45), "2": "LED_DIN"},
+          Note="cut to free GPIO45 (status LED)", in_bom=False)
+    s.add("74xGxx:74AHCT1G125", "U", "74AHCT1G125", SOT23_5,
+          {"1": "GND", "2": "LED_DIN", "3": "GND", "4": "LED_DIN_5V", "5": "V5"}, LCSC="C7484", MPN="SN74AHCT1G125DBVR")
+    C(s, "100n", "V5", "GND")
+    s.add("LED:WS2812B", "D", "XL-5050RGBC-2812B", "LED_SMD:LED_WS2812B_PLCC4_5.0x5.0mm_P3.2mm",
+          {"VDD": "V5", "VSS": "GND", "DIN": "LED_DIN_5V", "DOUT": "LED_DOUT"}, LCSC="C2843785",
+          MPN="XL-5050RGBC-2812B", Note="XINGLIGHT WS2812B 5050; JLCPCB Standard-PCBA only: hand-solder on Economic")
+    C(s, "100n", "V5", "GND")
+
+    # Stack bus (male headers, board underside) and the FFC port.
+    bus_net = lambda g: gp(g) if isinstance(g, int) else g
+    add_mod_header(s, "J4", mod_bus("A", bus_net), MOD_MALE, "mod bus A, board underside")
+    add_mod_header(s, "J5", mod_bus("B", bus_net), MOD_MALE, "mod bus B, board underside")
+    s.add("Connector_Generic:Conn_01x60", "J", "FFC 60P", "stack:FFC_0.5mm_60P_FlipTop",
+          {str(i + 1): n for i, n in enumerate(mod_ffc())}, ref="J6", LCSC="C22435645", MPN="05A20L60P",
+          Note="HanElectricity 0.5 mm flip-top; footprint from Hirose FH12, check against its drawing")
+    s.add("Jumper:SolderJumper_2_Open", "JP", "FFC_V5", JP_OPEN, {"1": "V5", "2": "V5_FFC"},
+          Note="bridge to put V5 on the FFC (2 conductors, 400 mA each; unfused)", in_bom=False)
+
+    for net in ["SWCLK", "SWDIO", "RUN", "GND", "+3V3", "VBUS", "V5_IN", "V5", "+1V1"]:
+        s.add("Connector:TestPoint", "TP", net, TP, {"1": net}, in_bom=False)
+    flags(s, "GND", "V5", "V5_IN", "+1V1", "VREG_AVDD", "VBUS", "V5_FFC")
+    return s
+
+
 # ---------------------------------------------------------------------------
 # Single board: all three tiers on one PCB, no BTB connectors
 # ---------------------------------------------------------------------------
@@ -602,11 +763,12 @@ def main():
         single("single_sh_proto", "Stepper controller - single board prototype, all-0603 basic parts (JST-SH 8P)",
                sh_motor_pair_nested, "4.7k", proto=True),
         mod_driver(),
+        mod_mcu(),
     ]
     for b in boards:
         out = os.path.join(OUT, b.name)
         # single_sh(_proto) have a hand-arranged, wired drawing; the others are label-only
-        # (mod_driver too, for now: its wired drawing follows the placement).
+        # (mod_* too, for now: their wired drawings follow the placement).
         singles = single_sh_sch.write(b, out) if b.name.startswith("single_sh") else b.write(out)
         print(f"{b.name}: {len(b.parts)} parts; single-pin nets: {', '.join(singles) or 'none'}")
 
