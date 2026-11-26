@@ -1,8 +1,8 @@
 # Modular boards (`mod_*`): separation plan
 
-> **Status: plan, rev 5, 2026-11-26.** Branch `mod-boards`.
-> - `mod_driver` and `mod_mcu`: netlists (`gen/build.py`, label-only for now) and placements (`gen/pcbgen.py`) done, unrouted. Both are **56 x 47.18 mm**.
-> - Next: wired schematics and routing, then `mod_motor` on the same outline.
+> **Status: plan, rev 6, 2026-11-26.** Branch `mod-boards`.
+> - All three boards (`mod_mcu`, `mod_driver`, `mod_motor`): netlists (`gen/build.py`, label-only for now) and placements (`gen/pcbgen.py`) done, unrouted, all on the **56 x 47.18 mm** outline.
+> - Next: wired schematics, then routing.
 
 The fabricated `single_sh_proto` (150 x 30 mm, ordered 2026-10-11, board 1
 brought up 2026-10-21) is split into a stack of three boards.
@@ -42,7 +42,7 @@ Cost and compactness come first.
  ┌──┴─────────────────────┴─┐  mod_driver  4 layers  10x AT8833CQ, V5 sense
  └──▲──────────▲──────────▲─┘                         stacking headers carry the bus through
     │ bus A    │ motor out│ bus B                     + the motor-output header
- ┌──┴──────────┴──────────┴─┐  mod_motor   2 layers  motor connectors + stepper IO (e-stop, LED strip, 5 V in)
+ ┌──┴──────────┴──────────┴─┐  mod_motor   2 layers  GH motor plugs + stepper IO, all underneath
  └──────────────────────────┘
 ```
 
@@ -63,7 +63,7 @@ Cost and compactness come first.
 | Bus pass-through on `mod_driver` (female body on top, 12.3 mm tails mate the layer below) | 2x20 2.54 mm stacking (PC104) | C35165 | 6278 |
 | Bus + motor-output sockets, `mod_motor` top (female) | 2x20 2.54 mm, 8.5 mm | C5124634 | 6394 |
 | FFC port on `mod_mcu` | 05A20L60P, 60P 0.5 mm flip-top, bottom contact, 400 mA/pin | C22435645 | 1970 |
-| Motor plugs, `mod_motor` (side entry at the board edge) | SM08B-SRSS-TB | C160407 | 151k |
+| Motor plugs, `mod_motor` (vertical, on the underside) | JST GH BM08B-GHS-TBT, 1.25 mm | C133062 ($0.35) | 30k |
 
 Prices (JLCPCB, qty 10): stacking C35165 $0.86, female C5124634 $0.27 at 50, male C3012260 $0.33, FFC 60P $0.15 at 50, AT8833CQ $0.25 at 50.
 
@@ -176,12 +176,17 @@ All of `driver()`. Proto refs:
 This is the old tier-3 `io_board()`. The stepper-specific IO moves here from
 `mod_mcu` so the MCU layer stays generic. Proto refs:
 
-- **Motor plugs:** J11-J15, 5x JST-SH 8P with the nested pinout (`sh_motor_pair_nested()`), side-entry SM08B along one long edge. That edge must be clear of the bus header, so the plugs go on a short edge or the headers move inboard; settle this in placement.
-- **Board-ID resistor**, new value: 2.2 k (595 mV) = "SH 8P, nested pinout". The proto's 4.7 k is shared with `io_sh`, which has the old pinout, so firmware can't tell the two apart.
+- **Motor plugs:** J11-J15, 5x **JST GH 8P (1.25 mm)**, one pitch up from the proto's JST-SH (1.0 mm); your decision, 2026-11-26.
+  - Same nested pinout (`gh_motor_pair_nested()` = `sh_motor_pair_nested()` with the GH part), so the per-axis firmware flags stay as on the proto.
+  - Vertical BM08B-GHS-TBT on the underside, plugs facing down.
+- **Board-ID resistor**, new value: 2.2 k (595 mV) = "GH 8P, nested pinout". The proto's 4.7 k is shared with `io_sh`, which has the old pinout, so firmware can't tell the two apart.
 - **External 5 V in:** J4 / D3 / C59, onto bus V5. Motor current from an external supply then never crosses into `mod_mcu`.
 - **LED strip out:** U15 / R38 / C60 / F2 / JP3 / J5 / J6 / C61, fed from LED_DOUT.
 - **E-stop** J7 / JP4 / R39 and **panel buttons** J8 / R40 / R41, on LADDER.
-- Side-entry or edge-mounted versions of the PH/XH connectors, since the layer above sits ~11 mm over the board.
+- Everything but the three sockets is on the **underside**. The bottom of the stack is free there, and the layer above sits only ~8.5 mm over the top.
+  - The PH / XH connectors are the proto's THT parts, bodies underneath.
+  - All SMD parts are on B, so the PCBA stays single-sided.
+- The 1812 strip polyfuse becomes the same 1206 part as `mod_mcu` F1. The 10 uF is 0603; passives are 0402.
 
 ## Power
 
@@ -194,7 +199,7 @@ This is the old tier-3 `io_board()`. The stepper-specific IO moves here from
 ## Open decisions
 
 1. ~~Outline~~: 56 x 47.18 mm from the `mod_driver` placement. `mod_mcu` (MCU, USB-C, power, 60P FFC between the bus headers) and `mod_motor` (5 SH plugs) still have to fit it. If the plugs don't fit `mod_motor`'s two free short edges, they go on its underside (top-entry BM08B), or `mod_motor` overhangs.
-2. **Motor plug edge** on `mod_motor`: a short edge, or move the bus headers inboard.
+2. ~~Motor plug edge~~: there's no room for side entry, so the plugs face down from the underside. If they have to come out sideways instead, `mod_motor` needs an overhanging edge, which would take the cheaper side-entry GH clone (C42376901, $0.08) but make the board bigger.
 3. ~~Stacking header for the motor outputs~~: settled, stacking header (see Parts).
 4. ~~FFC V5 limit~~: an open solder jumper (no V5 on the FFC by default), for cost.
 5. **`mod_driver` on 2 layers?** Cheaper, but the proto's cells lean on In1 GND / In2 V5. Default 4.
@@ -247,6 +252,22 @@ Generated by `gen/pcbgen.py mod_mcu`; all 73 footprints placed, no courtyard or 
 **Tidy by hand:** one I2C pull-up (R9) landed at the east end of bus B's inner row.
 
 **BOM:** 1 RP2354B, 2 bus headers (C3012260), the 60P FFC, USB-C, 1 Qwiic, 3 buttons. Passives are 0402 basic, except 10 uF 0603 and the 1206 polyfuse. The 5050 status LED is hand-soldered on an Economic order, as on the proto.
+
+## `mod_motor` placement (2026-11-26)
+
+Generated by `gen/pcbgen.py mod_motor`, 2 layers; all 31 footprints placed, no courtyard or clearance errors, unrouted.
+
+**Top:** the female bus sockets J1 / J2 and the motor-output socket J3, at the same pin positions as `mod_driver`.
+
+**Underside:**
+- The five GH plugs stand across each half of the board, each beside the J3 pins it comes from:
+  - North half (J3's odd row): M5+M6 west, M3+M4, M1+M2 east.
+  - South half (even row): M7+M8, M9+M10 east.
+- Each plug has pin 1 at the end away from J3. The nested pinout then reaches its J3 row with no crossings when the outer pins (1, 2) are routed round one side of the plug's pad column and the rest down the other. A straight-line ratsnest still draws crossings because it can't show that wrap.
+- M5+M6 takes both J3 rows, so a few of its lines change layer.
+- IO, each with its parts: E-STOP and PANEL BTN in the gaps of the north half; 5 V IN, LED STRIP and LED PWR in the south-west.
+
+**BOM:** 23 placements on one side (5 GH plugs extended, the rest are the proto's parts), plus the hand-soldered THT sockets and IO connectors.
 
 ## Work plan
 

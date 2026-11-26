@@ -269,6 +269,7 @@ Bring-up (2026-10-21, board 1): boots, flashes over USB and runs the firmware; s
 
 - `mod_driver/`: label-only schematic from `mod_driver()` in `gen/build.py`, and a placed, unrouted PCB (56 x 47.18 mm) from `mod_driver()` in `gen/pcbgen.py`.
 - `mod_mcu/`: the same for the general-purpose MCU layer (`mod_mcu()` in both scripts), same outline. Its 60-pin FFC footprint (`stack:FFC_0.5mm_60P_FlipTop`, `gen/footprints.py`) uses the Hirose FH12 land pattern and must be checked against the HanElectricity 05A20L60P drawing before ordering.
+- `mod_motor/`: the same for the bottom layer (2 layers): JST GH 8P (1.25 mm) motor plugs and the stepper IO, all on the underside, female stack sockets on top.
 
 ## Schematics and BOM
 

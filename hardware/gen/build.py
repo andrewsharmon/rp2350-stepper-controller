@@ -97,6 +97,7 @@ PASSIVES = {
     ("27", R0402): ("C25100", "0402WGF270JTCE"),         # extended
     ("33", R0402): ("C25105", "0402WGF330JTCE"),
     ("1k", R0402): ("C11702", "0402WGF1001TCE"),
+    ("2.2k", R0402): ("C25879", "0402WGF2201TCE"),       # mod_motor board ID
     ("3.3k 1%", R0402): ("C25890", "0402WGF3301TCE"),
     ("4.7k", R0402): ("C25900", "0402WGF4701TCE"),
     ("5.1k", R0402): ("C25905", "0402WGF5101TCE"),
@@ -429,7 +430,8 @@ def sh_motor_pair(s, m):
           LCSC="C160394", MPN="BM08B-SRSS-TB")
 
 
-def sh_motor_pair_nested(s, m):
+def sh_motor_pair_nested(s, m, conn=("Connector_JST:JST_SH_BM08B-SRSS-TB_1x08-1MP_P1.00mm_Vertical",
+                                     "C160394", "BM08B-SRSS-TB")):
     # single_sh_proto: the corrected dual-motor cable pinout, where one motor's
     # coils take the outer pins and the other's the inner ones. Coil and
     # polarity per motor are chosen for the layout (the two drivers' outputs
@@ -443,10 +445,17 @@ def sh_motor_pair_nested(s, m):
     a1, a2, b1, b2 = motor_nets(m, "out")
     c1, c2, d1, d2 = motor_nets(m + 1, "out")
     nets = [c1, c2, b1, b2, a2, a1, d1, d2]
-    s.add("Connector_Generic:Conn_01x08", "J", f"M{m + 1}+M{m}",
-          "Connector_JST:JST_SH_BM08B-SRSS-TB_1x08-1MP_P1.00mm_Vertical",
+    fp, lcsc, mpn = conn
+    s.add("Connector_Generic:Conn_01x08", "J", f"M{m + 1}+M{m}", fp,
           {str(i + 1): n for i, n in enumerate(nets)}, ref=f"J{10 + (m + 1) // 2}",
-          LCSC="C160394", MPN="BM08B-SRSS-TB")
+          LCSC=lcsc, MPN=mpn)
+
+
+def gh_motor_pair_nested(s, m):
+    # mod_motor: the same nested dual-motor pinout one pitch up, JST GH 1.25 mm,
+    # vertical (the plugs face down out of the stack's bottom layer).
+    sh_motor_pair_nested(s, m, ("Connector_JST:JST_GH_BM08B-GHS-TBT_1x08-1MP_P1.25mm_Vertical",
+                                "C133062", "BM08B-GHS-TBT"))
 
 
 # ---------------------------------------------------------------------------
@@ -708,6 +717,34 @@ def mod_mcu():
     return s
 
 
+def motor_gpio(g):
+    """GPIO / bus signal -> net on mod_motor: board ID, ladder, the LED chain."""
+    return {43: "BOARD_ID", 44: "LADDER", "LED_DOUT": "LED_DATA"}.get(g)
+
+
+def mod_motor():
+    """Motor plugs and the stepper IO: io_board() with JST GH 8P plugs, 0402
+    passives, the 1206 polyfuse, and a new board ID (2.2k = GH 8P nested).
+    Bottom of the stack: female sockets on top, everything else underneath."""
+    s = Schematic("mod_motor", "Mod stack - motor plugs and stepper IO (JST GH 8P)")
+    add_mod_header(s, "J1", mod_bus("A", motor_gpio), MOD_FEMALE, "mod bus A, top side")
+    add_mod_header(s, "J2", mod_bus("B", motor_gpio), MOD_FEMALE, "mod bus B, top side")
+    add_mod_header(s, "J3", mod_motor_out(), MOD_FEMALE, "motor outputs from mod_driver, top side")
+    SUBST_FP.clear(), SUBST_VALUE.clear()
+    SUBST_FP.update({C0805: C0603})          # 10 uF on the strip supply: 0603 10 V
+    io_board("mod_motor", "", gh_motor_pair_nested, "2.2k", s)
+    SUBST_FP.clear()
+    for part in s.parts:
+        if part.fields.get("LCSC") == "C209721":     # 1812 polyfuse -> the 1206 mod_mcu uses
+            part.footprint = "Fuse:Fuse_1206_3216Metric"
+            part.fields.update(LCSC="C269120", MPN="SMD1206B150TFT",
+                               Note="PTTC; 1.5 A hold / 3 A trip, 8 V; same part as mod_mcu F1")
+    for net in ["V5", "GND", "LADDER", "BOARD_ID", "LED_DATA"]:
+        s.add("Connector:TestPoint", "TP", net, TP, {"1": net}, in_bom=False)
+    flags(s, "GND", "V5", "+5V_EXT", "STRIP_5V")
+    return s
+
+
 # ---------------------------------------------------------------------------
 # Single board: all three tiers on one PCB, no BTB connectors
 # ---------------------------------------------------------------------------
@@ -764,6 +801,7 @@ def main():
                sh_motor_pair_nested, "4.7k", proto=True),
         mod_driver(),
         mod_mcu(),
+        mod_motor(),
     ]
     for b in boards:
         out = os.path.join(OUT, b.name)

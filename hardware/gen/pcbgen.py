@@ -141,7 +141,7 @@ def place(fp, x, y, rot=0, bottom=False):
 
 # JLCPCB's cheapest via class (no extra cost): 0.3 mm drill, used with a 0.52 mm
 # pad so the annular ring is 0.11 mm (JLCDFM flags 0.1 and under as danger).
-BIG_VIAS = {"single_sh_proto", "mod_driver", "mod_mcu"}
+BIG_VIAS = {"single_sh_proto", "mod_driver", "mod_mcu", "mod_motor"}
 
 
 def jlc_rules(board, thickness=1.0, big_vias=False):
@@ -1168,16 +1168,121 @@ def mod_mcu(board, fps):
     return placed
 
 
-BOARDS = {"controller": controller, "driver": driver, "single_sh": single_sh, "single_sh_proto": single_sh_proto, "mod_driver": mod_driver, "mod_mcu": mod_mcu}
-LAYERS = {"controller": 4, "driver": 4, "single_sh": 4, "single_sh_proto": 4, "mod_driver": 4, "mod_mcu": 4}
+# ---------------------------------------------------------------------------
+# mod_motor: the stack's bottom layer, 2 layers. Female bus and motor-output
+# sockets on top (THT, under mod_driver); everything else on the underside,
+# which is free at the bottom of the stack: the JST GH 8P plugs face down,
+# the stepper-IO connectors' bodies are underneath (THT), and the SMD parts
+# are all on B, so the PCBA stays single-sided.
+# Plugs sit beside the J3 pins they come from: J3's odd row (bus A side)
+# carries M5..M1 west to east, the even row M6..M10.
+# ---------------------------------------------------------------------------
+
+def mod_motor(board, fps):
+    outline(board, MD_W, MD_H, 1.0)
+    placed = set()
+    taken_b = []
+    by_net = {}
+    for ref, fp in fps.items():
+        for pad in fp.Pads():
+            by_net.setdefault(pad.GetNetname(), set()).add(ref)
+
+    def one(net, prefix, value=None):
+        r = sorted(r for r in by_net.get(net, ()) if r.startswith(prefix)
+                   and (value is None or fps[r].GetValue() == value))
+        assert len(r) == 1, (net, prefix, value, r)
+        return r[0]
+
+    def crtyd(fp):
+        bb = fp.GetCourtyard(pcbnew.B_CrtYd if fp.IsFlipped() else pcbnew.F_CrtYd).BBox()
+        return [pcbnew.ToMM(v) for v in (bb.GetLeft(), bb.GetTop(), bb.GetRight(), bb.GetBottom())]
+
+    def put_bottom(ref, u, v, rot=0, reach=6.0, gap=0.25):
+        fp = fps[ref]
+        if not fp.IsFlipped():
+            fp.Flip(fp.GetPosition(), pcbnew.FLIP_DIRECTION_TOP_BOTTOM)
+        fp.SetOrientationDegrees(rot)
+        steps = int(reach / 0.1)
+        x0, y0 = md_xy(0.3, 0.3)
+        x1, y1 = md_xy(MD_W - 0.3, MD_H - 0.3)
+        for du, dv in sorted(((a, b) for a in range(-steps, steps + 1) for b in range(-steps, steps + 1)),
+                             key=lambda d: d[0] ** 2 + d[1] ** 2):
+            fp.SetPosition(pcbnew.VECTOR2I(*(MM(c) for c in md_xy(u + du * 0.1, v + dv * 0.1))))
+            q = crtyd(fp)
+            g = [q[0] - gap, q[1] - gap, q[2] + gap, q[3] + gap]
+            if g[0] < x0 or g[1] < y0 or g[2] > x1 or g[3] > y1:
+                continue
+            if all(g[2] <= b[0] or b[2] <= g[0] or g[3] <= b[1] or b[3] <= g[1] for b in taken_b):
+                if du * du + dv * dv > 100:
+                    print(f"  {ref}: moved {du * 0.1:.1f}, {dv * 0.1:.1f}")
+                placed.add(ref)
+                taken_b.append(q)
+                return
+        print(f"  {ref}: no room on the underside near ({u}, {v})")
+
+    pin_u = lambda pos: MD_U0 + 2.54 * pos
+    place_header(fps["J1"], (pin_u(19), MD_A_IN), (-1, 0), (0, -1))
+    place_header(fps["J2"], (pin_u(0), MD_H - MD_A_IN), (1, 0), (0, 1))
+    place_header(fps["J3"], (pin_u(0), MD_H / 2 - 1.27), (1, 0), (0, 1))
+    placed.update({"J1", "J2", "J3"})
+    for ref in ("J1", "J2", "J3"):          # the sockets' pin tails come through the underside
+        for pad in fps[ref].Pads():
+            q = pad.GetPosition()
+            x, y = pcbnew.ToMM(q.x), pcbnew.ToMM(q.y)
+            taken_b.append([x - 1.0, y - 1.0, x + 1.0, y + 1.0])
+
+    # Motor plugs standing across each half (rot 90, pins north-south),
+    # north half over J3's odd row, south half over the even row; the IO
+    # connectors go in the gaps between them.
+    vn, vs = (MD_A_IN + 1.3 + MD_H / 2 - 2.6) / 2, MD_H - (MD_A_IN + 1.3 + MD_H / 2 - 2.6) / 2
+    # Pin 1 at the end away from J3: the nested pinout then reaches J3's
+    # row without crossings, outer pins (1, 2) round the west side of the
+    # column and the rest down its east side.
+    for ref, (u, v) in {"J13": (pin_u(1.0), vn), "J12": (pin_u(9.5), vn), "J11": (pin_u(18.0), vn),
+                        "J14": (pin_u(9.5), vs), "J15": (pin_u(18.0), vs)}.items():
+        put_bottom(ref, u, v, 90, reach=3.0)
+        fp = fps[ref]
+        pad = {p.GetNumber(): pcbnew.ToMM(p.GetPosition().y) for p in fp.Pads()}
+        if (pad["1"] > pad["8"]) == (v < MD_H / 2):      # pin 1 on J3's side: turn it round
+            fp.SetOrientationDegrees(fp.GetOrientationDegrees() + 180)
+
+    # Stepper IO, each connector with its parts: e-stop and panel buttons in
+    # the north gaps, 5 V in and the LED strip in the south-west.
+    def conn(value):
+        return next(r for r in fps if r.startswith("J") and fps[r].GetValue() == value)
+    groups = [
+        (conn("E-STOP"), pin_u(5.0), vn - 2.0, 0, [one("/ESTOP_RET", "JP"), one("/ESTOP_RET", "R")]),
+        (conn("PANEL BTN"), pin_u(13.75), vn - 2.0, 0, [one("/PB1", "R"), one("/PB2", "R")]),
+        (conn("5V IN"), pin_u(1.0), vs - 1.0, 90, [one("/+5V_EXT", "D"), one("/+5V_EXT", "C")]),
+        (conn("LED STRIP"), pin_u(5.0), vs - 2.6, 0, [one("/STRIP_DIN", "R"), one("/LED_BUF", "U"),
+                                                     one("/STRIP_V5_FUSED", "F"), one("/STRIP_V5_FUSED", "JP")]),
+        (conn("LED PWR"), pin_u(13.75), vs - 2.6, 0, [one("/STRIP_5V", "C", "10u")]),
+    ]
+    for ref, u, v, rot, parts in groups:
+        put_bottom(ref, u, v, rot, reach=4.0)
+        for r in parts:
+            put_bottom(r, u, v + 4.0, 0, reach=10.0)
+    rest = [r for r in fps if r not in placed and not r.startswith("TP")]
+    for r in sorted(rest):
+        put_bottom(r, 16.0, vs, 0, reach=20.0)
+    for r in sorted(r for r in fps if r.startswith("TP")):
+        put_bottom(r, MD_W / 2, MD_H / 2, 0, reach=25.0)
+    for fp in fps.values():
+        fp.Reference().SetVisible(False)
+    return placed
+
+
+BOARDS = {"controller": controller, "driver": driver, "single_sh": single_sh, "single_sh_proto": single_sh_proto, "mod_driver": mod_driver, "mod_mcu": mod_mcu, "mod_motor": mod_motor}
+LAYERS = {"controller": 4, "driver": 4, "single_sh": 4, "single_sh_proto": 4, "mod_driver": 4, "mod_mcu": 4, "mod_motor": 2}
 # Outline (w, h) in mm and board thickness.
 SIZES = {"controller": (30.0, 30.0, 1.0), "driver": (30.0, 30.0, 1.0), "single_sh": (SH_L, SH_W, 1.6),
-         "single_sh_proto": (SP_L, SP_W, 1.6), "mod_driver": (MD_W, MD_H, 1.6), "mod_mcu": (MD_W, MD_H, 1.6)}
+         "single_sh_proto": (SP_L, SP_W, 1.6), "mod_driver": (MD_W, MD_H, 1.6), "mod_mcu": (MD_W, MD_H, 1.6), "mod_motor": (MD_W, MD_H, 1.6)}
 ZONES = {"controller": [("/GND", pcbnew.In1_Cu), ("/+3V3", pcbnew.In2_Cu)],
          "driver": [("/GND", pcbnew.In1_Cu), ("/V5", pcbnew.In2_Cu)],
          "single_sh": [("GND", pcbnew.In1_Cu)], "single_sh_proto": [("GND", pcbnew.In1_Cu)],
          "mod_driver": [("/GND", pcbnew.In1_Cu), ("/V5", pcbnew.In2_Cu)],
-         "mod_mcu": [("/GND", pcbnew.In1_Cu), ("/+3V3", pcbnew.In2_Cu)]}      # global power nets; In2 zones: see single_sh()
+         "mod_mcu": [("/GND", pcbnew.In1_Cu), ("/+3V3", pcbnew.In2_Cu)],
+         "mod_motor": [("/GND", pcbnew.B_Cu)]}      # global power nets; In2 zones: see single_sh()
 
 
 def build(name, out_dir):
