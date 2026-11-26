@@ -180,6 +180,15 @@ def jlc_netclasses(pro_path, big_vias=False):
     ]
     ns["netclass_patterns"] = [{"netclass": "Power", "pattern": p}
                                for p in ("/V5", "/V5_IN", "/VBUS", "/VBUS_F", "/GND", "/+3V3", "/+1V1", "/VREG_LX")]
+    # The board's design rules live in the project too; board.Save() doesn't
+    # write them when the project file is new, so DRC would fall back to
+    # KiCad's defaults (0.2 mm min track, 0.5 mm edge). Same values as jlc_rules().
+    rules = pro.setdefault("board", {}).setdefault("design_settings", {}).setdefault("rules", {})
+    rules.update({"min_clearance": 0.1, "min_track_width": 0.1, "min_via_annular_width": 0.075,
+                  "min_via_diameter": 0.45 if big_vias else 0.3, "min_through_hole_diameter": 0.3 if big_vias else 0.15,
+                  "min_hole_clearance": 0.2, "min_hole_to_hole": 0.25, "min_copper_edge_clearance": 0.3,
+                  "min_silk_clearance": 0.05, "min_text_height": 0.6, "min_connection": 0.0,
+                  "min_microvia_diameter": 0.2, "min_microvia_drill": 0.1})
     json.dump(pro, open(pro_path, "w"), indent=2)
 
 
@@ -912,19 +921,23 @@ def mod_driver(board, fps):
         for g in (0, 2, 3):
             put(gap_caps.pop(0), pin_u(4 * g + 1.5) + 5.08, vu - MD_CAP * sgn, rot)
 
-    # Gap 1/2 of each row: NSLEEP pull-up and the VMOT_SENSE divider.
+    # Gap 1/2 of each row, in one column on the gap's centre line: the
+    # motor inputs run up both sides of it at +-1.27 mm, which leaves a
+    # ~2.1 mm wide strip. Row A: the NSLEEP pull-up, NSLEEP end toward the
+    # chips (its spine is under the row). Row B: the VMOT_SENSE divider and
+    # its cap, V5 end toward bus B (GPIO42 is on B's outer row).
     ug = pin_u(4 * 1 + 1.5) + 5.08
-    put(one("/NSLEEP", "R"), ug - 0.9, vc1, 90)
-    put(one("/VMOT_SENSE", "R", "39k 1%"), ug + 0.9, MD_H - vc1, 90)
-    put(one("/VMOT_SENSE", "R", "10k 1%"), ug - 0.9, MD_H - vc1, 90)
-    put(one("/VMOT_SENSE", "C"), ug + 0.9, vc1, 90)
+    put(one("/NSLEEP", "R"), ug, vc1, 270)
+    put(one("/VMOT_SENSE", "R", "39k 1%"), ug, MD_H - (va_in + 3.4), 90)
+    put(one("/VMOT_SENSE", "R", "10k 1%"), ug, MD_H - (va_in + 5.85), 90)
+    put(one("/VMOT_SENSE", "C"), ug, MD_H - (va_in + 7.8), 90)
 
     # Test pads on the board's west / east ends beside the driver rows (clear
-    # of J3's ends).
-    tps = sorted((r for r in fps if r.startswith("TP")), key=lambda r: int(r[2:]))
-    spots = [(1.3, vu1 - 1.5), (1.3, vu1 + 1.5), (1.3, MD_H - vu1), (MD_W - 1.3, vu1), (MD_W - 1.3, MD_H - vu1)]
-    for ref, (u, v) in zip(tps, spots):
-        put(ref, u, v)
+    # of J3's ends), each by the spine or part it probes.
+    spots = {"/V5": (1.3, vu1 - 1.5), "/NSLEEP": (1.3, vu1 + 1.5), "/VMOT_SENSE": (1.3, MD_H - vu1),
+             "/LADDER": (MD_W - 1.3, vu1), "/GND": (MD_W - 1.3, MD_H - vu1)}
+    for net, (u, v) in spots.items():
+        put(one(net, "TP"), u, v)
     # Reference designators hidden, as on single_sh_proto (too dense).
     for fp in fps.values():
         fp.Reference().SetVisible(False)
