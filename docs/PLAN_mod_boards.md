@@ -31,6 +31,18 @@ Cost and compactness come first.
 - **Extended parts are counted.** Each unique extended part costs a JLCPCB setup fee, so reuse one part number wherever a choice exists.
 - **Not done, needs your call:** tying AISEN / BISEN straight to GND would remove all 20 sense resistors and a strip of board, but also the chopper current limit (0.16-0.24 A), the only hard protection for the small motors.
 
+## Before ordering: checklist
+
+Go through these before any `mod_*` board goes to JLCPCB.
+
+- [ ] **Motor plugs vs the motors on hand.** Check the JST GH 8P (1.25 mm, BM08B-GHS-TBT, LCSC C133062) on `mod_motor` against the physical 8 mm motors and their cables:
+  - Does the motors' plug or cable family really mate with JST GH? MX1.25 / PicoBlade and ZH look alike but don't mate.
+  - Pin count, and the latch side relative to the plug's orientation on the board.
+  - That the dual-motor cable wires to the nested pinout (pins 1-2 and 7-8 = the outer motor, 3-6 = the inner one; see `gh_motor_pair_nested()`).
+
+  If the motors don't match, change the part in `gh_motor_pair_nested()` (`gen/build.py`) and re-place `mod_motor` before ordering.
+- [ ] **FFC footprint.** Check `stack:FFC_0.5mm_60P_FlipTop` (Hirose FH12 land pattern) against the HanElectricity 05A20L60P (C22435645) drawing.
+
 ## Stack
 
 ```
@@ -204,7 +216,7 @@ This is the old tier-3 `io_board()`. The stepper-specific IO moves here from
 4. ~~FFC V5 limit~~: an open solder jumper (no V5 on the FFC by default), for cost.
 5. **`mod_driver` on 2 layers?** Cheaper, but the proto's cells lean on In1 GND / In2 V5. Default 4.
 6. ~~Inductor L1~~: the Abracon AOTA is back in stock, so `mod_mcu` uses it.
-7. **FFC footprint:** check the FH12-derived land pattern against the 05A20L60P drawing.
+7. **FFC footprint:** check the FH12-derived land pattern against the 05A20L60P drawing (on the pre-order checklist).
 
 ## `mod_driver` placement (2026-11-26)
 
