@@ -302,6 +302,40 @@
         "pcb_color": "rgba(0, 0, 0, 0.000)",
         "schematic_color": "rgba(0, 0, 0, 0.000)",
         "priority": 0
+      },
+      {
+        "name": "Wide",
+        "clearance": 0.1,
+        "track_width": 0.5,
+        "via_diameter": 0.52,
+        "via_drill": 0.3,
+        "diff_pair_width": 0.2,
+        "diff_pair_gap": 0.15,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "wire_width": 6,
+        "bus_width": 12,
+        "line_style": 0,
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 1
+      },
+      {
+        "name": "Motor",
+        "clearance": 0.1,
+        "track_width": 0.2,
+        "via_diameter": 0.52,
+        "via_drill": 0.3,
+        "diff_pair_width": 0.2,
+        "diff_pair_gap": 0.15,
+        "microvia_diameter": 0.3,
+        "microvia_drill": 0.1,
+        "wire_width": 6,
+        "bus_width": 12,
+        "line_style": 0,
+        "pcb_color": "rgba(0, 0, 0, 0.000)",
+        "schematic_color": "rgba(0, 0, 0, 0.000)",
+        "priority": 1
       }
     ],
     "meta": {
@@ -341,6 +375,22 @@
       {
         "netclass": "Power",
         "pattern": "/VREG_LX"
+      },
+      {
+        "netclass": "Wide",
+        "pattern": "/+5V_EXT"
+      },
+      {
+        "netclass": "Wide",
+        "pattern": "/STRIP_V5_FUSED"
+      },
+      {
+        "netclass": "Wide",
+        "pattern": "/STRIP_5V"
+      },
+      {
+        "netclass": "Motor",
+        "pattern": "/M*_?OUT?"
       }
     ]
   },

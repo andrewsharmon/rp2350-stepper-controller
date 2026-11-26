@@ -178,8 +178,14 @@ def jlc_netclasses(pro_path, big_vias=False):
          "wire_width": 6, "bus_width": 12, "line_style": 0, "pcb_color": "rgba(0, 0, 0, 0.000)",
          "schematic_color": "rgba(0, 0, 0, 0.000)", "priority": 0},
     ]
+    # Wide: the external 5 V and LED-strip supply (amps, through a 1.5 A fuse).
+    # Motor: driver outputs to the plugs (up to 0.24 A chopper limit).
+    for name, w in (("Wide", 0.5), ("Motor", 0.2)):
+        ns["classes"].append(dict(ns["classes"][1], name=name, track_width=w, priority=1))
     ns["netclass_patterns"] = [{"netclass": "Power", "pattern": p}
-                               for p in ("/V5", "/V5_IN", "/VBUS", "/VBUS_F", "/GND", "/+3V3", "/+1V1", "/VREG_LX")]
+                               for p in ("/V5", "/V5_IN", "/VBUS", "/VBUS_F", "/GND", "/+3V3", "/+1V1", "/VREG_LX")] + \
+        [{"netclass": "Wide", "pattern": p} for p in ("/+5V_EXT", "/STRIP_V5_FUSED", "/STRIP_5V")] + \
+        [{"netclass": "Motor", "pattern": "/M*_?OUT?"}]
     # The board's design rules live in the project too; board.Save() doesn't
     # write them when the project file is new, so DRC would fall back to
     # KiCad's defaults (0.2 mm min track, 0.5 mm edge). Same values as jlc_rules().
