@@ -1,6 +1,8 @@
 # Modular boards (`mod_*`): separation plan
 
-> **Status: plan, rev 3, 2026-11-26.** Branch `mod-boards`. Next: `mod_driver` netlist and a rough placement to fix the outline.
+> **Status: plan, rev 4, 2026-11-26.** Branch `mod-boards`.
+> - `mod_driver`: netlist (`mod_driver()` in `gen/build.py`, label-only for now) and placement (`mod_driver()` in `gen/pcbgen.py`) done, unrouted. The outline is **56 x 47.18 mm**.
+> - Next: the `mod_driver` wired schematic and routing, then `mod_mcu` on the same outline.
 
 The fabricated `single_sh_proto` (150 x 30 mm, ordered 2026-10-11, board 1
 brought up 2026-10-21) is split into a stack of three boards.
@@ -24,7 +26,7 @@ Cost and compactness come first.
   - V5 10 uF, 0603 10 V (C19702). The basic 0402 10 uF (C15525) is 6.3 V, too close on a 5.5 V rail once DC bias is counted.
   - 39 k VMOT_SENSE divider, 0603 (C23153). The 0402 one is extended.
 - **Shared driver capacitors.** Per chip, VCP 100 nF and VINT 1 uF stay. They are the charge pump and the internal regulator, so they can't be shared.
-  - The proto's per-chip 2.2 uF VM caps and separate 3x 10 uF bulk (13 parts, ~52 uF) become **one 10 uF 0603 per driver pair**, between the two chips' VM pins: 5 parts, ~50 uF.
+  - The proto's per-chip 2.2 uF VM caps and separate 3x 10 uF bulk (13 parts, ~52 uF) become **three 10 uF 0603 per row of five drivers**, each in the gap between two chips: 6 parts, ~60 uF.
   - The 2.2 uF line leaves the BOM, and the V5 capacitance the soft-start was sized for stays about the same.
 - **Extended parts are counted.** Each unique extended part costs a JLCPCB setup fee, so reuse one part number wherever a choice exists.
 - **Not done, needs your call:** tying AISEN / BISEN straight to GND would remove all 20 sense resistors and a strip of board, but also the chopper current limit (0.16-0.24 A), the only hard protection for the small motors.
@@ -45,11 +47,11 @@ Cost and compactness come first.
 ```
 
 - **Mod bus:** two 2x20 2.54 mm headers on opposite long edges, 80 pins. Every layer gets every GPIO, V5, 3V3 and GND. Layers only use the pins they need, so any layer can be swapped for a custom one.
-  - 2.54 mm keeps it hand-pluggable and lets a perfboard be a layer: the two header rows sit on the 2.54 mm grid, 45.72 mm (18 pitches) apart.
+  - 2.54 mm keeps it hand-pluggable and lets a perfboard be a layer: the headers sit on one 2.54 mm grid, with the bus inner rows 15 pitches (38.1 mm) apart and J3 halfway between.
   - At 3 A per pin, 4 pins per rail carry the motor current with plenty of margin. That would take ~10 pins per rail on the DF40.
   - The ~11 mm gap between layers leaves room for parts on both facing sides. The DF40 stack allowed ~1 mm.
 - **Motor-output header:** a third 2x20 down the middle of `mod_driver` / `mod_motor`. It carries the 40 driver outputs and nothing else. It is a separate header so the bus stays generic.
-- **Target outline ~65 x 56 mm** for all three layers, with the bus headers on the 65 mm edges. `mod_driver` is the densest layer, so its placement decides the final size.
+- **Outline 56 x 47.18 mm** for all three layers (set by the `mod_driver` placement, 2026-11-26), with the bus headers on the 56 mm edges. The header bodies end 2.6 mm from the short edges.
   - It has 10 cells in two rows of 5, either side of the motor-output header.
   - The cell pitch is 10.16 mm, four header pins. Each motor's four outputs then run straight across to four adjacent pins of the middle header, and each row is 50.8 mm long.
 
@@ -89,7 +91,14 @@ Each header puts signals on its inner row (toward the board centre) and power on
 - `LED_DOUT` is the status LED's data out. The LED strip on the bottom layer chains after it, as on the proto.
 - RUN and SWD on the bus let a lower layer reset or debug the MCU.
 - 3V3 on the bus comes from the ME6211 (500 mA). Budget roughly 300 mA for add-on layers.
-- Exact pin numbers get assigned during the `mod_mcu` placement. Rule: GPIOs in pad order, a GND at least every 4th pin, power pins at the header ends.
+- Pin numbers are fixed in `mod_bus()` in `gen/build.py`. Inner row = odd pins, outer row = even pins.
+- **Direction.** Seen from the top, the pin numbers run the way the RP2354B's pads do (counter-clockwise), so `mod_mcu`'s fan-out doesn't cross.
+  - A runs along the -y edge, pin 1 at the +x end (GPIO0 east).
+  - B runs along the +y edge, pin 1 at the -x end (GPIO20 west).
+- **Driver input order.** Because of that direction, each motor's four GPIOs reach its driver mirrored. `mod_driver` therefore wires GPIO 4k..4k+3 to BIN1, BIN2, AIN2, AIN1 (not AIN1, AIN2, BIN1, BIN2).
+  - That drives (A, B) = (-sin, cos): the same field turned 90 degrees electrical.
+  - The motor turns the same way, one full step on, so the firmware is unchanged.
+  - In return, the inputs need no crossings at all.
 
 ## FFC port (draft)
 
@@ -135,7 +144,7 @@ which is why the on-board analog functions sit there.
 All of `driver()`. Proto refs:
 
 - U1-U10, each with its sense resistors (0603) and VINT / VCP caps (0402). The cell follows the proto's: caps above the chip, ISEN pads straight below.
-- One 10 uF 0603 per pair on the VM pins, in place of the proto's ten 2.2 uF and the 3x 10 uF bulk.
+- Three 10 uF 0603 per row in the gaps between chips (6 in all), in place of the proto's ten 2.2 uF and the 3x 10 uF bulk.
 - NSLEEP pull-up R21, to bus 3V3.
 - VMOT_SENSE divider R22 / R23 / C34. It stays here so it measures V5 at the drivers, after the connector drop. With no driver layer, GPIO42 reads 0 V, so firmware can tell.
 - nFAULT stays wire-ORed onto LADDER (GPIO44) on the bus.
@@ -164,12 +173,28 @@ This is the old tier-3 `io_board()`. The stepper-specific IO moves here from
 
 ## Open decisions
 
-1. **Outline.** ~65 x 56 mm is a target. Confirm it with a `mod_driver` placement first, because that layer is the tightest.
+1. ~~Outline~~: 56 x 47.18 mm from the `mod_driver` placement. `mod_mcu` (MCU, USB-C, power, 60P FFC between the bus headers) and `mod_motor` (5 SH plugs) still have to fit it. If the plugs don't fit `mod_motor`'s two free short edges, they go on its underside (top-entry BM08B), or `mod_motor` overhangs.
 2. **Motor plug edge** on `mod_motor`: a short edge, or move the bus headers inboard.
 3. ~~Stacking header for the motor outputs~~: settled, stacking header (see Parts).
 4. **FFC V5 limit:** a 0.5 A polyfuse, or a solder jumper (no V5 on the FFC by default).
 5. **`mod_driver` on 2 layers?** Cheaper, but the proto's cells lean on In1 GND / In2 V5. Default 4.
 6. **Inductor L1:** check whether the Abracon AOTA is back in stock before keeping the CMLW substitute. Take the proto's 1V1 ripple result into account.
+
+## `mod_driver` placement (2026-11-26)
+
+Generated by `gen/pcbgen.py mod_driver`; parts only, no copper yet.
+
+- Bus A (J1) and B (J2) on the long edges, motor-output header J3 down the middle.
+- Rows of five cells: M5..M1 under A (chips rot 90, caps toward A), M6..M10 over B (rot 270). Pitch 10.16 mm, so each motor's GPIOs sit straight above its chip and its outputs straight below.
+- The proto cell is unchanged except for 0402 VINT / VCP caps, which sit 4.3 mm from the chip centre instead of 4.75.
+- The shared 10 uF caps are in the chip gaps. The free gap in each row holds the NSLEEP pull-up and the VMOT_SENSE divider.
+- Test pads sit at the board's short ends.
+- **Ratsnest:**
+  - Inputs, outputs and the motor buses: no crossings.
+  - Each motor's second input passes its VINT or VCP cap.
+  - NSLEEP and LADDER (nFAULT) are multi-drop nets. Route them as spines, as on the proto.
+- DRC: no courtyard or clearance errors; all 259 connections still unrouted.
+- **BOM:** 63 placements, 9 lines. Basic: the 0402 / 0603 passives. Extended: AT8833CQ (C5120769) and the stacking header (C35165, 3 per board).
 
 ## Work plan
 

@@ -141,7 +141,7 @@ def place(fp, x, y, rot=0, bottom=False):
 
 # JLCPCB's cheapest via class (no extra cost): 0.3 mm drill, used with a 0.52 mm
 # pad so the annular ring is 0.11 mm (JLCDFM flags 0.1 and under as danger).
-BIG_VIAS = {"single_sh_proto"}
+BIG_VIAS = {"single_sh_proto", "mod_driver"}
 
 
 def jlc_rules(board, thickness=1.0, big_vias=False):
@@ -815,14 +815,129 @@ def single_sh_proto(board, fps):
     return placed
 
 
-BOARDS = {"controller": controller, "driver": driver, "single_sh": single_sh, "single_sh_proto": single_sh_proto}
-LAYERS = {"controller": 4, "driver": 4, "single_sh": 4, "single_sh_proto": 4}
+# ---------------------------------------------------------------------------
+# mod_driver: the stack's H-bridge layer (docs/PLAN_mod_boards.md). 4 layers:
+# F parts + signals, In1 GND, In2 V5, B signals.
+#
+# Bus header A (J1) along the -y edge, B (J2) along the +y edge, the
+# motor-output header (J3) down the middle; all three are 2x20 stacking
+# headers on one 2.54 mm grid. A driver row between each bus header and J3:
+# M5..M1 (west to east) under A, chips rot 90, caps toward A, outputs toward
+# J3; M6..M10 over B, chips rot 270. Cell pitch 10.16 mm = four header pins,
+# so each motor's GPIOs sit straight above its chip and its outputs straight
+# below. Pin numbering: see mod_bus() / mod_motor_out() in build.py.
+# ---------------------------------------------------------------------------
+
+# Bus A and B inner rows 15 pitches apart, J3 7 pitches from each: every
+# header on one 2.54 mm grid (a perfboard layer lines up with the bus).
+MD_A_IN = 4.54                      # bus A inner row, from the -y edge
+MD_W, MD_H = 56.0, 2 * MD_A_IN + 15 * 2.54
+MD_U0 = (MD_W - 19 * 2.54) / 2      # u of header position 0 (west end)
+MD_GAP_IN, MD_CAP, MD_RS = 5.5, 4.3, 3.6
+
+
+def md_xy(u, v):
+    return CX - MD_W / 2 + u, CY - MD_H / 2 + v
+
+
+def place_header(fp, pin1, step, pin2):
+    """Place a 2x20 so pin 1 lands on pin1 (u, v), pin 3 is one pitch along step
+    (du, dv) and pin 2 one pitch along pin2 (du, dv). Tries the four rotations."""
+    x1, y1 = md_xy(*pin1)
+    for rot in (0, 90, 180, 270):
+        place(fp, 0, 0, rot=rot)
+        pad = {p.GetNumber(): p.GetPosition() for p in fp.Pads()}
+        d3 = [pcbnew.ToMM(pad["3"][i] - pad["1"][i]) for i in (0, 1)]
+        d2 = [pcbnew.ToMM(pad["2"][i] - pad["1"][i]) for i in (0, 1)]
+        if all(abs(d3[i] - 2.54 * step[i]) < 0.01 and abs(d2[i] - 2.54 * pin2[i]) < 0.01 for i in (0, 1)):
+            fp.Move(pcbnew.VECTOR2I(MM(x1) - pad["1"].x, MM(y1) - pad["1"].y))
+            return
+    raise SystemExit(f"{fp.GetReference()}: no rotation gives that pin layout")
+
+
+def mod_driver(board, fps):
+    outline(board, MD_W, MD_H, 1.0)
+    placed = set()
+    by_net = {}
+    for ref, fp in fps.items():
+        for pad in fp.Pads():
+            by_net.setdefault(pad.GetNetname(), set()).add(ref)
+
+    def one(net, prefix, value=None):
+        refs = sorted(r for r in by_net.get(net, ()) if r.startswith(prefix)
+                      and (value is None or fps[r].GetValue() == value))
+        assert len(refs) == 1, (net, prefix, refs)
+        return refs[0]
+
+    def put(ref, u, v, rot=0, bottom=False):
+        place(fps[ref], *md_xy(u, v), rot=rot, bottom=bottom)
+        placed.add(ref)
+
+    # Rows (v) from the -y edge: bus A inner row, caps, chips, sense resistors,
+    # J3, then the same mirrored down to bus B.
+    va_in = MD_A_IN
+    vc1 = va_in + MD_GAP_IN
+    vu1 = vc1 + MD_CAP
+    vr1 = vu1 + MD_RS
+    mid = MD_H / 2
+    vj3 = mid - 1.27                       # J3 odd row; even row 2.54 below
+    assert vj3 - vr1 > 3.0, f"no room between the sense resistors and J3 ({vj3 - vr1:.2f} mm)"
+    pin_u = lambda pos: MD_U0 + 2.54 * pos
+
+    place_header(fps["J1"], (pin_u(19), va_in), (-1, 0), (0, -1))     # A: pin 1 east, odd row inner
+    place_header(fps["J2"], (pin_u(0), MD_H - va_in), (1, 0), (0, 1))  # B: pin 1 west, odd row inner
+    place_header(fps["J3"], (pin_u(0), vj3), (1, 0), (0, 1))           # odd row faces the M1-M5 row
+    placed.update({"J1", "J2", "J3"})
+
+    gap_caps = sorted(r for r in fps if fps[r].GetValue() == "10u")
+    assert len(gap_caps) == 6
+    for row, motors in ((0, [5, 4, 3, 2, 1]), (1, [6, 7, 8, 9, 10])):
+        sgn = 1 if row == 0 else -1                      # +v toward J3
+        vu = vu1 if row == 0 else MD_H - vu1
+        rot = 90 if row == 0 else 270
+        for j, m in enumerate(motors):
+            uc = pin_u(4 * j + 1.5)
+            put(f"U{m}", uc, vu, rot)
+            # Caps toward the bus, vertical, chip-side pad toward the chip:
+            # VINT over pin 12, VCP over pin 9 (west / east at rot 90).
+            put(one(f"/U{m}_VINT", "C"), uc - 1.75 * sgn, vu - MD_CAP * sgn, rot)
+            put(one(f"/U{m}_VCP", "C"), uc + 1.75 * sgn, vu - MD_CAP * sgn, rot)
+            # Sense resistors toward J3, ISEN pads under the ISEN pins (1, 4).
+            put(one(f"/U{m}_AISEN", "R"), uc - 1.8 * sgn, vu + MD_RS * sgn, 180 if row == 0 else 0)
+            put(one(f"/U{m}_BISEN", "R"), uc + 1.8 * sgn, vu + MD_RS * sgn, 0 if row == 0 else 180)
+        # Shared VM caps in the gaps between chips 0/1, 2/3, 3/4 of the row,
+        # on the cap line, V5 pad toward the bus.
+        for g in (0, 2, 3):
+            put(gap_caps.pop(0), pin_u(4 * g + 1.5) + 5.08, vu - MD_CAP * sgn, rot)
+
+    # Gap 1/2 of each row: NSLEEP pull-up and the VMOT_SENSE divider.
+    ug = pin_u(4 * 1 + 1.5) + 5.08
+    put(one("/NSLEEP", "R"), ug - 0.9, vc1, 90)
+    put(one("/VMOT_SENSE", "R", "39k 1%"), ug + 0.9, MD_H - vc1, 90)
+    put(one("/VMOT_SENSE", "R", "10k 1%"), ug - 0.9, MD_H - vc1, 90)
+    put(one("/VMOT_SENSE", "C"), ug + 0.9, vc1, 90)
+
+    # Test pads on the board's west / east ends beside the driver rows (clear
+    # of J3's ends).
+    tps = sorted((r for r in fps if r.startswith("TP")), key=lambda r: int(r[2:]))
+    spots = [(1.3, vu1 - 1.5), (1.3, vu1 + 1.5), (1.3, MD_H - vu1), (MD_W - 1.3, vu1), (MD_W - 1.3, MD_H - vu1)]
+    for ref, (u, v) in zip(tps, spots):
+        put(ref, u, v)
+    # Reference designators hidden, as on single_sh_proto (too dense).
+    for fp in fps.values():
+        fp.Reference().SetVisible(False)
+    return placed
+
+
+BOARDS = {"controller": controller, "driver": driver, "single_sh": single_sh, "single_sh_proto": single_sh_proto, "mod_driver": mod_driver}
+LAYERS = {"controller": 4, "driver": 4, "single_sh": 4, "single_sh_proto": 4, "mod_driver": 4}
 # Outline (w, h) in mm and board thickness.
 SIZES = {"controller": (30.0, 30.0, 1.0), "driver": (30.0, 30.0, 1.0), "single_sh": (SH_L, SH_W, 1.6),
-         "single_sh_proto": (SP_L, SP_W, 1.6)}
+         "single_sh_proto": (SP_L, SP_W, 1.6), "mod_driver": (MD_W, MD_H, 1.6)}
 ZONES = {"controller": [("/GND", pcbnew.In1_Cu), ("/+3V3", pcbnew.In2_Cu)],
          "driver": [("/GND", pcbnew.In1_Cu), ("/V5", pcbnew.In2_Cu)],
-         "single_sh": [("GND", pcbnew.In1_Cu)], "single_sh_proto": [("GND", pcbnew.In1_Cu)]}      # global power nets; In2 zones: see single_sh()
+         "single_sh": [("GND", pcbnew.In1_Cu)], "single_sh_proto": [("GND", pcbnew.In1_Cu)],
+         "mod_driver": [("/GND", pcbnew.In1_Cu), ("/V5", pcbnew.In2_Cu)]}      # global power nets; In2 zones: see single_sh()
 
 
 def build(name, out_dir):

@@ -302,7 +302,14 @@ def controller(s=None):
 # Tier 2: universal driver
 # ---------------------------------------------------------------------------
 
-def driver(s=None):
+# mod_driver: three 10 uF per row of five drivers, each in the gap between two
+# chips (60 uF nominal, the proto had ~52 uF on V5).
+MOD_VM_CAPS = {1, 3, 5, 6, 8, 10}
+
+
+def driver(s=None, shared_vm=False):
+    """10x AT8833CQ. shared_vm (mod_driver): shared 10 uF 0603 VM caps between
+    neighbouring chips replace the per-chip 2.2 uF and the separate V5 bulk."""
     stacked = s is None
     if stacked:
         s = Schematic("driver", "Stepper controller - tier 2 (10x AT8833CQ)")
@@ -321,12 +328,17 @@ def driver(s=None):
         C(s, "1u", f"{u}_VINT", "GND")
         flags(s, f"{u}_VINT")  # internal regulator output, typed power_in in the symbol
         C(s, "100n", f"{u}_VCP", "V5")
-        C(s, "2.2u", "V5", "GND")
+        if not shared_vm:
+            C(s, "2.2u", "V5", "GND")
+        elif m in MOD_VM_CAPS:
+            C(s, "10u", "V5", "GND", C0603, Note="VM, shared by the neighbouring drivers in the row; also the V5 bulk")
 
-    for _ in range(3):
-        C(s, "10u", "V5", "GND", C0805)
+    if not shared_vm:
+        for _ in range(3):
+            C(s, "10u", "V5", "GND", C0805)
     R(s, "47k", "+3V3", "NSLEEP")
-    R(s, "39k 1%", "V5", "VMOT_SENSE")
+    # The 39k 0402 is extended; mod_driver uses the basic 0603.
+    R(s, "39k 1%", "V5", "VMOT_SENSE", fp=R0603 if shared_vm else R0402)
     R(s, "10k 1%", "VMOT_SENSE", "GND")
     C(s, "100n", "VMOT_SENSE", "GND")
 
@@ -437,6 +449,105 @@ def sh_motor_pair_nested(s, m):
 
 
 # ---------------------------------------------------------------------------
+# Mod stack: mod_mcu / mod_driver / mod_motor (docs/PLAN_mod_boards.md)
+# ---------------------------------------------------------------------------
+#
+# The mod bus is two 2x20 2.54 mm headers, A and B, on the board's long edges.
+# Every layer sees every pin; a layer connects only the pins it uses (the
+# stacking headers pass the rest through). Pin 2k-1 (odd) is the inner row,
+# toward the board centre, and carries signals; pin 2k (even) is the outer
+# row and carries power, so every signal has a power/GND pin beside it.
+# Entries are GPIO numbers or rail names; each board maps a GPIO to its own
+# net name. A runs GPIO0-19 (M1-M5), B GPIO20-39 (M6-M10) on the inner row and
+# the utilities GPIO40-47 on the outer row.
+#
+# Seen from the top, the pin numbers run the way the RP2354B's pads do
+# (counter-clockwise), so mod_mcu's fan-out doesn't cross: A along the
+# board's -y edge with pin 1 at the +x end, B along the +y edge with pin 1 at
+# the -x end.
+
+MOD_BUS_A_OUTER = ["V5", "V5", "GND", "+3V3", "GND", "RUN", "GND", "SWCLK", "GND", "SWDIO",
+                   "GND", "LED_DOUT", "GND", "+3V3", "GND", "GND", "GND", "V5", "GND", "V5"]
+MOD_BUS_B_OUTER = ["V5", "V5", "GND", 40, 41, "GND", 42, 43, "GND", 44,
+                   45, "GND", 46, 47, "GND", "+3V3", "GND", "GND", "GND", "V5"]
+# 2x20 2.54 mm: stacking female with 12.3 mm tails (mod_driver, all three
+# headers, so they mate mod_motor at one height), plain male (mod_mcu
+# underside), plain female (mod_motor top).
+MOD_STACK = ("Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical", "2.54-2*20PFemale longPC104", "C35165")
+MOD_MALE = ("Connector_PinHeader_2.54mm:PinHeader_2x20_P2.54mm_Vertical", "PZ254-2-20-Z-8.5", "C3012260")
+MOD_FEMALE = ("Connector_PinSocket_2.54mm:PinSocket_2x20_P2.54mm_Vertical", "2.54-2*20P", "C5124634")
+
+
+def mod_bus(header, gpio_net):
+    """40 nets for bus header 'A' or 'B'; gpio_net(n) names GPIO n on this board (None: not used)."""
+    inner = range(0, 20) if header == "A" else range(20, 40)
+    outer = MOD_BUS_A_OUTER if header == "A" else MOD_BUS_B_OUTER
+    assert len(outer) == 20 and outer.count("GND") == (10 if header == "A" else 8)
+    nets = []
+    for g, o in zip(inner, outer):
+        # Rails are on every board; the named signals (RUN, SWD, LED_DOUT) map like GPIOs.
+        nets += [gpio_net(g), o if o in ("V5", "GND", "+3V3") else gpio_net(o)]
+    return nets
+
+
+def mod_motor_out():
+    """Motor-output header (mod_driver -> mod_motor), down the board's middle.
+
+    Position p = 0..19 from the pin-1 (west) end; pin 2p+1 (odd row) faces the
+    M1-M5 driver row (bus A side), pin 2p+2 the M6-M10 row. The rows run in
+    opposite directions (they follow the bus, see mod_bus): M5..M1 west to
+    east on the odd row, M6..M10 on the even row. Each motor takes four
+    positions in its driver's output-pin order seen from the header (rot 90:
+    AOUT1 AOUT2 BOUT2 BOUT1 west to east; rot 270: the reverse), so nothing
+    crosses.
+    """
+    nets = []
+    for p in range(20):
+        a1, a2, b1, b2 = motor_nets(5 - p // 4, "out")
+        nets.append([a1, a2, b2, b1][p % 4])
+        a1, a2, b1, b2 = motor_nets(6 + p // 4, "out")
+        nets.append([b1, b2, a2, a1][p % 4])
+    return nets
+
+
+def add_mod_header(sch, ref, nets, part, note):
+    fp, mpn, lcsc = part
+    value = {MOD_STACK: "2x20 stacking", MOD_MALE: "2x20 male", MOD_FEMALE: "2x20 female"}[part]
+    sch.add("Connector_Generic:Conn_02x20_Odd_Even", "J", value, fp,
+            {str(i + 1): n for i, n in enumerate(nets) if n}, ref=ref, MPN=mpn, LCSC=lcsc, Note=note)
+
+
+def driver_gpio(g):
+    """GPIO -> net on mod_driver: motor inputs, VMOT_SENSE, LADDER; the rest pass through.
+
+    Motor m's GPIOs 4(m-1)..+3 go to BIN1 BIN2 AIN2 AIN1, not AIN1 AIN2 BIN1 BIN2.
+    Seen from the top the RP2354B's pads run counter-clockwise, so on the
+    stack bus each motor's four GPIOs arrive mirrored relative to the
+    driver's input pins; this order lets them in without crossing. The
+    firmware's coil A (GPIO +0/+1) then drives bridge B and its coil B drives
+    bridge A reversed: (A, B) = (-sin, cos), the same field turned 90 degrees
+    electrical. The motor runs the same way, one full step on; the firmware
+    needs no change.
+    """
+    if isinstance(g, int) and g < 40:
+        a1, a2, b1, b2 = motor_nets(g // 4 + 1, "in")
+        return [b1, b2, a2, a1][g % 4]
+    return {42: "VMOT_SENSE", 44: "LADDER"}.get(g)
+
+
+def mod_driver():
+    s = Schematic("mod_driver", "Mod stack - H-bridge layer (10x AT8833CQ)")
+    driver(s, shared_vm=True)
+    add_mod_header(s, "J1", mod_bus("A", driver_gpio), MOD_STACK, "mod bus A (GPIO0-19 = M1-M5); passes through")
+    add_mod_header(s, "J2", mod_bus("B", driver_gpio), MOD_STACK, "mod bus B (GPIO20-47); passes through")
+    add_mod_header(s, "J3", mod_motor_out(), MOD_STACK, "motor outputs to mod_motor")
+    for net in ["V5", "VMOT_SENSE", "NSLEEP", "LADDER", "GND"]:
+        s.add("Connector:TestPoint", "TP", net, TP, {"1": net}, in_bom=False)
+    flags(s, "GND", "V5", "+3V3")
+    return s
+
+
+# ---------------------------------------------------------------------------
 # Single board: all three tiers on one PCB, no BTB connectors
 # ---------------------------------------------------------------------------
 
@@ -490,10 +601,12 @@ def main():
                sh_motor_pair, "4.7k"),
         single("single_sh_proto", "Stepper controller - single board prototype, all-0603 basic parts (JST-SH 8P)",
                sh_motor_pair_nested, "4.7k", proto=True),
+        mod_driver(),
     ]
     for b in boards:
         out = os.path.join(OUT, b.name)
-        # single_sh(_proto) have a hand-arranged, wired drawing; the others are label-only.
+        # single_sh(_proto) have a hand-arranged, wired drawing; the others are label-only
+        # (mod_driver too, for now: its wired drawing follows the placement).
         singles = single_sh_sch.write(b, out) if b.name.startswith("single_sh") else b.write(out)
         print(f"{b.name}: {len(b.parts)} parts; single-pin nets: {', '.join(singles) or 'none'}")
 

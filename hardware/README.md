@@ -263,6 +263,12 @@ Bring-up (2026-10-21, board 1): boots, flashes over USB and runs the firmware; s
 - Firmware: `-DPICO_BOARD=single_sh_proto`. Bring-up checklist: [`docs/BRINGUP_single_sh_proto.md`](../docs/BRINGUP_single_sh_proto.md).
 - Fabrication: `gen/jlcfab.py single_sh_proto --check` writes `single_sh_proto/jlcpcb/` (142 placements, 36 BOM lines: 21 basic, 15 extended; Economic PCBA; every placement checked against JLCPCB's footprints). Order: 4 layers, 1.6 mm, ENIG, plugged vias, 0.3 mm min via hole.
 
+## Modular stack (`mod_*`, in progress)
+
+`single_sh_proto` split into a three-layer stack: `mod_mcu` (general-purpose RP2354B layer), `mod_driver` (10x AT8833CQ) and `mod_motor` (motor plugs + stepper IO), joined by an 80-pin 2.54 mm bus. Plan, pinouts and status: [`docs/PLAN_mod_boards.md`](../docs/PLAN_mod_boards.md).
+
+- `mod_driver/`: label-only schematic from `mod_driver()` in `gen/build.py`, and a placed, unrouted PCB (56 x 47.18 mm) from `mod_driver()` in `gen/pcbgen.py`.
+
 ## Schematics and BOM
 
 Schematics are generated. Edit `gen/build.py`, not the `.kicad_sch` files. For `single_sh`, part placement and wiring live in `gen/single_sh_sch.py`.
