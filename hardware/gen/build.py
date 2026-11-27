@@ -564,10 +564,17 @@ def mod_ffc():
     the bus header pins: header A's GPIOs run south then west (west-most pin
     nearest the north), header B's north then west (east-most pin nearest the
     north; the outer-row utilities squeeze between the inner pins). A GND
-    after every 6 signals; V5_FFC (behind a solder jumper) at the north end."""
-    a = list(range(19, -1, -1))
+    after every 6 signals; V5_FFC (behind a solder jumper) at the north end.
+
+    The branches are routed on In2 from the header pins to a via field
+    beside the FFC. The two header pins west of that field (GPIO18 / 19 on
+    A, GPIO20 / 21 on B) reach it from the west side, where the west-most
+    pin has to nest outside the other: so 18 comes before 19, and 21 is the
+    last pin of B's group (south end)."""
+    a = [18, 19] + list(range(17, -1, -1))
     keys = {20 + p: p for p in range(20)}
     keys.update({g: k + 0.5 for k, g in enumerate(MOD_BUS_B_OUTER) if isinstance(g, int)})
+    keys[21], keys[20] = keys[20], keys[21]
     b = sorted(keys, key=lambda g: -keys[g])
     sig = a + b
     nets = ["V5_FFC", "V5_FFC", "GND"]

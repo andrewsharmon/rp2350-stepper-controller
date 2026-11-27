@@ -1093,7 +1093,11 @@ def mod_mcu(board, fps):
         px, py = pcbnew.ToMM(q.x) - ox, pcbnew.ToMM(q.y) - oy
         side = abs(px) > abs(py)
         fp = fps[ref]
-        for along in sorted((k * 0.05 for k in range(-80, 81)), key=abs):
+        # GPIO24-27 leave the west face between IOVDD 24's and 29's caps: 24's
+        # slides 0.3 mm north so the four tracks fit (1.08 mm needed, 1.03 free
+        # otherwise); 29's stays, XIN / XOUT are just south of it.
+        bias = {"24": -0.3}.get(pin, 0.0)
+        for along in sorted((k * 0.05 for k in range(-80, 81)), key=lambda a: abs(a - bias)):
             if side:
                 x, y, r = ox + px + 2.6 * (1 if px > 0 else -1), oy + py + along, 0 if px > 0 else 180
             else:

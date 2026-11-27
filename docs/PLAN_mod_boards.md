@@ -2,7 +2,7 @@
 
 > **Status: plan, rev 7, 2026-11-26.** Branch `mod-boards`.
 > - All three boards (`mod_mcu`, `mod_driver`, `mod_motor`): netlists (`gen/build.py`, label-only for now) and placements (`gen/pcbgen.py`) done, all on the **56 x 47.18 mm** outline.
-> - **Routed, DRC clean:** `mod_driver`, `mod_motor` (see the routing sections below). `mod_mcu`: in progress.
+> - **Routed, DRC clean:** `mod_driver`, `mod_motor`. `mod_mcu`: routed with **one connection still open** (MCU pin 53, GPIO42); see Routing below.
 > - Still to do: wired schematics.
 
 The fabricated `single_sh_proto` (150 x 30 mm, ordered 2026-10-11, board 1
@@ -120,9 +120,9 @@ LED_DOUT is on B because the status LED sits by GPIO45, on the MCU's bus B side.
 60 pins, 0.5 mm, along `mod_mcu`'s west edge with pin 1 at the north end. Pinout: `mod_ffc()` in `gen/build.py`.
 
 - All 48 GPIO, 9 GND (one after every 6 signals), 1 3V3, and 2 V5_FFC pins.
-- **Pin order** is whatever routes from the bus header pins to the FFC on B.Cu without crossing:
-  - GPIO19..0 (header A, west to east).
-  - Then header B's GPIOs, east to west, with the outer-row utilities fitted between the inner pins they pass.
+- **Pin order** is whatever routes from the bus header pins to the FFC on In2 without crossing (as routed, 2026-11-26):
+  - GPIO18, 19, then 17..0 (header A).
+  - Then header B's GPIOs, east to west, with the outer-row utilities fitted between the inner pins they pass, ending 20, 21.
 - **V5_FFC comes through an open solder jumper,** so by default there's no V5 on the FFC. Bridged it is unfused: 2 conductors at 400 mA each. That was decision 4, settled on cost; a remote motor layer brings its own 5 V.
 - **Part:** HanElectricity 05A20L60P (C22435645, $0.15 at 50). The Amphenol F32Q 60P has a KiCad footprint but costs $1.21 and had 9 in stock.
   - Its footprint (`stack:FFC_0.5mm_60P_FlipTop`, written by `gen/footprints.py`) uses the Hirose FH12 land pattern. The 05A20L60P drawing couldn't be read (LCSC's viewer has no text; JLCEDA's footprint API now blocks scripts).
@@ -311,12 +311,19 @@ Same rules as the proto: 0.52 / 0.3 vias, 45-degree tracks only, no vias in pads
 - Freerouting does the motor plugs and the IO. Afterwards its dangling vias are removed and its neck-downs widened back to 0.15 mm.
 - The plug wiring is valid but not tidy. A tidier nested pattern would need the LED strip / 5 V in connectors moved out of the plugs' fan-out.
 
-**`mod_mcu`** (4 layers):
-- Pre-routes:
-  - The proto's power copper round the MCU (decoupling, core regulator) is copied, turned 180 degrees.
-  - A +1V1 island on In2 under the chip (as on the proto), with 3V3 on the rest of In2.
-  - Plane stub vias are kept out of the pin-escape ring.
-- Freerouting gets all but about 10 connections. What's left is GPIO branches to the FFC on the west side, where the copper is full. These need a planned bus-to-FFC fan-out rather than autorouting.
+**`mod_mcu`** (4 layers; In1 GND, In2 3V3 + the FFC fan-out):
+- **FFC fan-out on In2.** Each FFC pad has a via in a two-column field just east of the pads. Each GPIO's branch runs on In2 from its bus-header pin to that via, scripted:
+  - The branches nest as two bundles: header A's into the north half of the field, header B's into the south half.
+  - Header B's outer-row pins (GPIO40-47) come up through the gap beside their inner-row neighbour.
+  - The bundles keep clear of the +1V1 island and of the south / west decoupling caps' plane vias. In2's 3V3 fills everywhere else.
+  - That needed **two swaps in the FFC pinout** (`mod_ffc()`): GPIO18 now comes before 19, and GPIO21 is the last of header B's group (after 20). The two west-most pins of each header reach the field from the other side.
+- The proto's power copper round the MCU (decoupling, core regulator) is copied, turned 180 degrees. The +1V1 island on In2 sits under the chip.
+- IOVDD 24's cap sits 0.3 mm north of its pin, so GPIO24-27 fit out between it and IOVDD 29's cap.
+- Freerouting does MCU -> bus on F/B. A grid router and small fix-ups close the leftovers.
+- **Still open: one connection, MCU pin 53 (GPIO42).**
+  - Its pad is boxed in on the south face, between GPIO41 / 43 and the trace to the DVDD 51 decoupling cap, which sits right in front of pin 53.
+  - Fix in KiCad with the interactive router: shove GPIO41 / 43 aside, or move that 1V1 cap a little west.
+  - DRC is otherwise clean: no errors; the warnings are silkscreen and footprint-library notes from the placement.
 
 ## Work plan
 

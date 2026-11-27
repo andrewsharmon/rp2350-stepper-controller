@@ -16558,7 +16558,7 @@
 		)
 		(uuid "91031ada-9176-5d06-9265-0fce66d3a5ff")
 	)
-	(label "GPIO19"
+	(label "GPIO18"
 		(at 411.48 314.96 180)
 		(effects
 			(font
@@ -16568,7 +16568,7 @@
 		)
 		(uuid "fc622f01-03d3-58de-afdb-bf7a3aa04187")
 	)
-	(label "GPIO18"
+	(label "GPIO19"
 		(at 411.48 317.5 180)
 		(effects
 			(font
@@ -17088,7 +17088,7 @@
 		)
 		(uuid "7f90aaab-ba96-52a6-ab91-ad4b4d1d1ace")
 	)
-	(label "GPIO21"
+	(label "GPIO20"
 		(at 411.48 449.58 180)
 		(effects
 			(font
@@ -17098,7 +17098,7 @@
 		)
 		(uuid "e434b0e0-9072-59a7-ac38-417813fb3161")
 	)
-	(label "GPIO20"
+	(label "GPIO21"
 		(at 411.48 452.12 180)
 		(effects
 			(font
